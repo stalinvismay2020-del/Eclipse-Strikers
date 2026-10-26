@@ -148,7 +148,10 @@ func _ready() -> void:
 		fade.tween_callback(func() -> void:
 			if is_instance_valid(loading):
 				loading.queue_free()
-			_build_founder_intro()
+			if is_instance_valid(lobby_layer):
+				lobby_layer.visible = true
+				lobby_layer.modulate.a = 1.0
+				_show_hub_tab("HOME")
 		)
 
 func _create_loading_screen() -> CanvasLayer:
