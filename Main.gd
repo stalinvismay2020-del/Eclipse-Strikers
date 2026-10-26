@@ -61,6 +61,9 @@ var selected_character := "Striker"
 var selected_team_color := "Electric Blue"
 var wins_total := 0
 var goals_total := 0
+var passes_total := 0
+var burst_uses_total := 0
+var tasks_claimed: Dictionary = {}
 var player_level := 1
 var aim_line: MeshInstance3D
 var goal_banner: Label
@@ -1106,6 +1109,7 @@ func _pass_ball() -> void:
 		ui_hint.text = "PASS SENT TO HOST"
 		return
 	ball.apply_central_impulse(dir.normalized() * pass_power)
+	passes_total += 1
 	ball_spin = clampf(player.global_position.z * 0.04, -0.5, 0.5)
 	kick_anim_time = 0.28
 	_play_sfx("pass")
@@ -1164,6 +1168,7 @@ func _burst() -> void:
 		ui_hint.text = "BURST recharging..."
 		return
 	burst_time = 1.6
+	burst_uses_total += 1
 	burst_cooldown = 5.0
 	_play_sfx("burst")
 	burst_fx_timer = 0.0
@@ -1718,7 +1723,12 @@ func _add_existing_loadout_controls() -> void:
 	for item in ["Striker", "Playmaker", "Defender", "Eclipse Ace"]:
 		if owned_characters.has(item):
 			character_picker.add_item(item)
-	character_picker.select(maxi(0, character_picker.get_item_index(selected_character)))
+	var selected_index := 0
+	for option_index in range(character_picker.item_count):
+		if character_picker.get_item_text(option_index) == selected_character:
+			selected_index = option_index
+			break
+	character_picker.select(selected_index)
 	hub_content.add_child(character_picker)
 	hub_content.add_child(_lobby_label("SPECIAL ABILITY"))
 	ability_picker = OptionButton.new()
