@@ -1523,8 +1523,10 @@ func _host_online_room() -> void:
 		return
 	network_peer = peer
 	multiplayer.multiplayer_peer = network_peer
-	multiplayer.peer_connected.connect(_on_network_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_network_peer_disconnected)
+	if not multiplayer.peer_connected.is_connected(_on_network_peer_connected):
+		multiplayer.peer_connected.connect(_on_network_peer_connected)
+	if not multiplayer.peer_disconnected.is_connected(_on_network_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_network_peer_disconnected)
 	network_status = "Hosting on UDP port %d • waiting for peers" % port
 	network_match_enabled = true
 	_set_network_status(network_status)
@@ -1545,9 +1547,12 @@ func _join_online_room() -> void:
 		return
 	network_peer = peer
 	multiplayer.multiplayer_peer = network_peer
-	multiplayer.connected_to_server.connect(_on_network_connected)
-	multiplayer.connection_failed.connect(_on_network_connection_failed)
-	multiplayer.server_disconnected.connect(_on_network_server_disconnected)
+	if not multiplayer.connected_to_server.is_connected(_on_network_connected):
+		multiplayer.connected_to_server.connect(_on_network_connected)
+	if not multiplayer.connection_failed.is_connected(_on_network_connection_failed):
+		multiplayer.connection_failed.connect(_on_network_connection_failed)
+	if not multiplayer.server_disconnected.is_connected(_on_network_server_disconnected):
+		multiplayer.server_disconnected.connect(_on_network_server_disconnected)
 	network_status = "Connecting to %s:%d…" % [address, port]
 	network_match_enabled = true
 	_set_network_status(network_status)
@@ -1646,6 +1651,13 @@ func _rpc_submit_state(position: Vector3, rotation_y: float) -> void:
 	if absf(position.x) > FIELD_LENGTH / 2.0 + 2.0 or absf(position.z) > FIELD_WIDTH / 2.0 + 2.0:
 		return
 	network_player_states[sender_id] = {"position": position, "rotation": rotation_y}
+	if not remote_players.has(sender_id) or not is_instance_valid(remote_players[sender_id]):
+		var avatar := _make_player(sender_id % 2 == 0, position)
+		avatar.name = "RemotePeer_%d" % sender_id
+		remote_players[sender_id] = avatar
+	var remote_avatar: CharacterBody3D = remote_players[sender_id]
+	remote_avatar.global_position = remote_avatar.global_position.lerp(position, 0.65)
+	remote_avatar.rotation.y = rotation_y
 
 
 @rpc("authority", "call_remote", "unreliable")
