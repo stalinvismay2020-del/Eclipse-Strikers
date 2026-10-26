@@ -1245,8 +1245,10 @@ func _build_lobby() -> void:
 	wallet.add_theme_font_size_override("font_size", 14)
 	wallet.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))
 	header.add_child(wallet)
-	var nav := HBoxContainer.new()
-	nav.add_theme_constant_override("separation", 4)
+	var nav := GridContainer.new()
+	nav.columns = 3
+	nav.add_theme_constant_override("h_separation", 4)
+	nav.add_theme_constant_override("v_separation", 4)
 	root.add_child(nav)
 	for tab in ["HOME", "SQUAD", "VAULT", "STORE", "TASKS", "ONLINE", "PROFILE", "TACTICS", "SETTINGS"]:
 		var nav_button := Button.new()
