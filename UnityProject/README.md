@@ -4,9 +4,9 @@ This is a separate Unity project folder so the existing Godot version remains pr
 
 - **Editor target:** Unity 2022.3.62f1 LTS
 - **Main scene:** `Assets/Scenes/Main.unity`
-- **Current playable foundation:** generated pitch and goals, 4v4 placeholder players, ball physics, basic opponent/teammate movement, five-minute match, score HUD, rematch/menu, local coins, and four simple character abilities.
+- **Current prototype:** generated pitch and goals, 4v4 placeholder players, ball physics, basic opponent/teammate movement and rival shot attempts, five-minute match, score HUD, rematch/menu, local coins, four simple character abilities, procedural player details/running cycle, and basic stadium stands/lighting.
 - **Controls:** keyboard controls for editor testing; basic on-screen buttons and touch movement for Android.
-- **Art status:** players are placeholders. Original anime character models, rigs, proper motion-captured/handmade animations, stadium art, audio and VFX are not yet included.
+- **Art status:** players and stadium details are generated from simple primitives. This is a visual improvement over plain capsules, but it is not final anime-quality art. Original character models, advanced rigs/animations, audio, VFX and polished stadium assets are not included.
 
 ## Open locally
 
