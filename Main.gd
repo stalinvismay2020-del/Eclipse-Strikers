@@ -102,6 +102,16 @@ var account_mode := "Guest"
 var player_profiles: Dictionary = {}
 var profile_uid_label: Label
 var profile_status_label: Label
+var owned_characters: Array = ["Striker"]
+var owned_outfits: Array = ["Academy Blue"]
+var equipped_outfit := "Academy Blue"
+var tutorial_completed := false
+var tutorial_layer: CanvasLayer
+var tutorial_step_label: Label
+var tutorial_body_label: Label
+var tutorial_index := 0
+var settings_sensitivity := 1.0
+var settings_music_enabled := true
 
 
 func _ready() -> void:
@@ -282,6 +292,8 @@ func _build_founder_intro() -> void:
 					intro.queue_free()
 				if is_instance_valid(lobby_layer):
 					lobby_layer.visible = true
+					if not tutorial_completed:
+						_start_tutorial()
 			)
 	skip.pressed.connect(finish_intro)
 	var pulse := create_tween().set_loops()
@@ -367,7 +379,7 @@ func _process(delta: float) -> void:
 		camera_rig.global_position = camera_rig.global_position.lerp(target, minf(1.0, delta * 5.0))
 		camera_rig.rotation.y = lerp_angle(camera_rig.rotation.y, player.rotation.y, minf(1.0, delta * 3.0))
 		if joystick_knob and joystick_base:
-			var offset := joystick_vector * 35.0
+			var offset := joystick_vector * 35.0 * settings_sensitivity
 			joystick_knob.position = Vector2(42, 42) + offset
 
 func _physics_process(delta: float) -> void:
@@ -1236,7 +1248,7 @@ func _build_lobby() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 4)
 	root.add_child(nav)
-	for tab in ["HOME", "SQUAD", "ONLINE", "PROFILE", "STORE", "TACTICS", "SETTINGS"]:
+	for tab in ["HOME", "SQUAD", "VAULT", "STORE", "TASKS", "ONLINE", "PROFILE", "TACTICS", "SETTINGS"]:
 		var nav_button := Button.new()
 		nav_button.text = tab
 		nav_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1319,6 +1331,10 @@ func _show_hub_tab(tab: String) -> void:
 			_build_online_panel()
 		"PROFILE":
 			_build_profile_panel()
+		"VAULT":
+			_build_vault_panel()
+		"TASKS":
+			_build_tasks_panel()
 		"SQUAD":
 			hub_content.add_child(_hub_heading("SQUAD • STARTING FOUR"))
 			hub_content.add_child(_hub_text("Your controlled player is locked to third-person. Use quick swaps to change your role and team setup before kick-off."))
@@ -1409,15 +1425,33 @@ func _show_hub_tab(tab: String) -> void:
 				))
 			hub_content.add_child(_hub_text("Teamwork tip: tap CALL PASS to request the ball, move into space, then use PASS to combine."))
 		"SETTINGS":
-			hub_content.add_child(_hub_heading("SETTINGS"))
-			hub_content.add_child(_hub_button("SOUND: " + ("ON" if sound_enabled else "OFF"), func():
+			hub_content.add_child(_hub_heading("SETTINGS • CONTROL YOUR ARENA"))
+			hub_content.add_child(_hub_button("SOUND EFFECTS: " + ("ON" if sound_enabled else "OFF"), func():
 				sound_enabled = not sound_enabled
-				lobby_status.text = "Sound " + ("enabled." if sound_enabled else "muted.")
+				_save_progress()
 				_show_hub_tab("SETTINGS")
 			))
-			hub_content.add_child(_hub_text("Controls: left virtual joystick • right-side SHOOT / PASS / LOB / FINESSE / TACKLE / BURST."))
-			hub_content.add_child(_hub_text("Perspective: third-person follow camera focused on your player. Match rules: no offsides, fouls or throw-ins."))
-			hub_content.add_child(_hub_text("Offline-first: launch and play Quick Match/Career without internet. Ranked matches will require internet and a live ranked server. Online matchmaking, chat, friends, clans and leaderboards are not live yet."))
+			hub_content.add_child(_hub_button("MUSIC: " + ("ON" if settings_music_enabled else "OFF"), func():
+				settings_music_enabled = not settings_music_enabled
+				_save_progress()
+				_show_hub_tab("SETTINGS")
+			))
+			hub_content.add_child(_hub_heading("JOYSTICK SENSITIVITY"))
+			var sensitivity := HSlider.new()
+			sensitivity.min_value = 0.6
+			sensitivity.max_value = 1.6
+			sensitivity.step = 0.1
+			sensitivity.value = settings_sensitivity
+			sensitivity.custom_minimum_size.y = 32
+			sensitivity.value_changed.connect(func(value: float):
+				settings_sensitivity = value
+				_save_progress()
+			)
+			hub_content.add_child(sensitivity)
+			hub_content.add_child(_hub_text("Sensitivity: %.1fx • Adjust joystick response." % settings_sensitivity))
+			hub_content.add_child(_hub_button("REPLAY 2-MINUTE TUTORIAL", func(): _start_tutorial(true)))
+			hub_content.add_child(_hub_text("Left joystick: move • SHOOT: kick • PASS: teammate • LOB: aerial ball • BURST: sprint."))
+			hub_content.add_child(_hub_text("Offline Quick Match/Career work without internet. Ranked needs internet and a live server, not yet deployed."))
 		_:
 			hub_content.add_child(_hub_heading("MATCHDAY • YOUR ARENA"))
 			hub_content.add_child(_hub_text("FOUR PLAYERS. ONE BALL. NO STOPPAGES."))
@@ -1442,6 +1476,154 @@ func _show_hub_tab(tab: String) -> void:
 			hub_content.add_child(_hub_heading("COMMUNITY"))
 			hub_content.add_child(_hub_text("Friends: local placeholder • Clan leaderboard: planned • Quick chat/emotes: planned."))
 			_add_existing_loadout_controls()
+
+
+func _build_store_panel() -> void:
+	hub_content.add_child(_hub_heading("STRIKER STORE • BUY WITH GP"))
+	hub_content.add_child(_hub_text("◈ %d GP available. Earn coins by playing matches and completing tasks." % match_coins))
+	hub_content.add_child(_hub_heading("CHARACTERS"))
+	for item in [["Playmaker", 250, "Passing specialist"], ["Defender", 250, "Defensive powerhouse"], ["Eclipse Ace", 500, "Elite anime striker"]]:
+		var item_name: String = item[0]
+		var price: int = item[1]
+		var description: String = item[2]
+		var row := VBoxContainer.new()
+		row.add_child(_hub_text(item_name + " • " + description))
+		if owned_characters.has(item_name):
+			row.add_child(_hub_text("OWNED ✓"))
+		else:
+			row.add_child(_hub_button("BUY " + item_name.to_upper() + " • %d GP" % price, func():
+				if match_coins < price:
+					lobby_status.text = "Not enough GP. Play matches or complete tasks."
+					return
+				match_coins -= price
+				owned_characters.append(item_name)
+				_save_progress()
+				lobby_status.text = item_name + " unlocked! Equip it in the Vault."
+				_show_hub_tab("STORE")
+			))
+		hub_content.add_child(row)
+	hub_content.add_child(_hub_heading("OUTFITS / KITS"))
+	for item in [["Academy Blue", 0, "Electric Blue"], ["Neon Surge", 120, "Neon Green"], ["Royal Eclipse", 180, "Royal Purple"], ["Crimson Phantom", 180, "Crimson Red"]]:
+		var outfit_name: String = item[0]
+		var price: int = item[1]
+		var team_color: String = item[2]
+		var row := HBoxContainer.new()
+		row.add_child(_hub_text("%s • %s" % [outfit_name, team_color]))
+		if owned_outfits.has(outfit_name):
+			row.add_child(_hub_text("OWNED" if equipped_outfit != outfit_name else "EQUIPPED ✓"))
+		else:
+			row.add_child(_hub_button("BUY %d GP" % price, func():
+				if match_coins < price:
+					lobby_status.text = "Not enough GP. Complete tasks to earn more."
+					return
+				match_coins -= price
+				owned_outfits.append(outfit_name)
+				_save_progress()
+				_show_hub_tab("STORE")
+			))
+		hub_content.add_child(row)
+
+
+func _build_vault_panel() -> void:
+	hub_content.add_child(_hub_heading("VAULT • YOUR COLLECTION"))
+	hub_content.add_child(_hub_text("Your free Striker and Academy Blue kit are unlocked from the start."))
+	hub_content.add_child(_hub_heading("CHARACTERS"))
+	for character_name in owned_characters:
+		hub_content.add_child(_hub_button(("✓ " if selected_character == character_name else "EQUIP ") + character_name, func():
+			selected_character = character_name
+			_save_progress()
+			_show_hub_tab("VAULT")
+		))
+	hub_content.add_child(_hub_heading("OUTFITS"))
+	for outfit_name in owned_outfits:
+		hub_content.add_child(_hub_button(("✓ EQUIPPED • " if equipped_outfit == outfit_name else "EQUIP • ") + outfit_name, func():
+			equipped_outfit = outfit_name
+			match outfit_name:
+				"Neon Surge": selected_team_color = "Neon Green"
+				"Royal Eclipse": selected_team_color = "Royal Purple"
+				"Crimson Phantom": selected_team_color = "Crimson Red"
+				_: selected_team_color = "Electric Blue"
+			_save_progress()
+			_show_hub_tab("VAULT")
+		))
+	hub_content.add_child(_hub_button("VISIT STORE", func(): _show_hub_tab("STORE")))
+
+
+func _start_tutorial(force_replay: bool = false) -> void:
+	if tutorial_completed and not force_replay:
+		return
+	if is_instance_valid(tutorial_layer):
+		tutorial_layer.queue_free()
+	tutorial_index = 0
+	tutorial_layer = CanvasLayer.new()
+	tutorial_layer.layer = 40
+	add_child(tutorial_layer)
+	var shade := ColorRect.new()
+	shade.anchor_right = 1.0
+	shade.anchor_bottom = 1.0
+	shade.color = Color(0.008, 0.012, 0.035, 0.94)
+	tutorial_layer.add_child(shade)
+	var center := CenterContainer.new()
+	center.anchor_right = 1.0
+	center.anchor_bottom = 1.0
+	center.offset_left = 20
+	center.offset_right = -20
+	tutorial_layer.add_child(center)
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(300, 330)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.add_child(card)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 12)
+	card.add_child(stack)
+	var heading := _hub_heading("2-MINUTE TRAINING")
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(heading)
+	tutorial_step_label = _hub_text("")
+	tutorial_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(tutorial_step_label)
+	tutorial_body_label = _hub_text("")
+	tutorial_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tutorial_body_label.custom_minimum_size.y = 100
+	stack.add_child(tutorial_body_label)
+	stack.add_child(_hub_text("Spend about 20 seconds per lesson. Replay any time in Settings."))
+	stack.add_child(_hub_button("NEXT LESSON  ▶", func():
+		tutorial_index += 1
+		if tutorial_index >= 6:
+			tutorial_completed = true
+			_save_progress()
+			if is_instance_valid(tutorial_layer):
+				tutorial_layer.queue_free()
+			tutorial_layer = null
+			if is_instance_valid(lobby_layer):
+				lobby_layer.visible = true
+				lobby_status.text = "Training complete. You're ready to play!"
+			return
+		_update_tutorial_page()
+	))
+	stack.add_child(_hub_button("SKIP TUTORIAL", func():
+		if is_instance_valid(tutorial_layer):
+			tutorial_layer.queue_free()
+		tutorial_layer = null
+		if is_instance_valid(lobby_layer):
+			lobby_layer.visible = true
+	))
+	lobby_layer.visible = false
+	_update_tutorial_page()
+
+
+func _update_tutorial_page() -> void:
+	var lessons := [
+		["1 / 6 • MOVEMENT", "Use the LEFT joystick to run in any direction."],
+		["2 / 6 • POSITIONING", "Move close to the ball and face the goal before shooting."],
+		["3 / 6 • SHOOT", "Tap SHOOT on the right to kick toward goal."],
+		["4 / 6 • PASS", "Tap PASS to send the ball to a teammate. Use CALL PASS to ask for a passing option."],
+		["5 / 6 • SPECIAL MOVES", "LOB sends an aerial ball, FINESSE is a controlled shot, TACKLE challenges for possession, and BURST speeds you up."],
+		["6 / 6 • WIN THE MATCH", "Watch the score and timer at the top. Pass, move into space and outscore the AI to earn GP."]
+	]
+	if is_instance_valid(tutorial_step_label) and is_instance_valid(tutorial_body_label):
+		tutorial_step_label.text = lessons[tutorial_index][0]
+		tutorial_body_label.text = lessons[tutorial_index][1]
 
 
 func _build_tasks_panel() -> void:
@@ -1953,6 +2135,12 @@ func _save_progress() -> void:
 	cfg.set_value("wallet", "premium_points", premium_points)
 	cfg.set_value("rewards", "daily_bonus_claimed", daily_bonus_claimed)
 	cfg.set_value("rewards", "goal_reward_claimed", goal_reward_claimed)
+	cfg.set_value("cosmetics", "owned_characters", owned_characters)
+	cfg.set_value("cosmetics", "owned_outfits", owned_outfits)
+	cfg.set_value("cosmetics", "equipped_outfit", equipped_outfit)
+	cfg.set_value("tutorial", "completed", tutorial_completed)
+	cfg.set_value("settings", "sensitivity", settings_sensitivity)
+	cfg.set_value("settings", "music_enabled", settings_music_enabled)
 	cfg.save("user://football_progress.cfg")
 
 
@@ -1969,6 +2157,16 @@ func _load_progress() -> void:
 		premium_points = int(cfg.get_value("wallet", "premium_points", 0))
 		daily_bonus_claimed = bool(cfg.get_value("rewards", "daily_bonus_claimed", false))
 		goal_reward_claimed = bool(cfg.get_value("rewards", "goal_reward_claimed", false))
+		owned_characters = cfg.get_value("cosmetics", "owned_characters", ["Striker"])
+		owned_outfits = cfg.get_value("cosmetics", "owned_outfits", ["Academy Blue"])
+		equipped_outfit = str(cfg.get_value("cosmetics", "equipped_outfit", "Academy Blue"))
+		tutorial_completed = bool(cfg.get_value("tutorial", "completed", false))
+		settings_sensitivity = float(cfg.get_value("settings", "sensitivity", 1.0))
+		settings_music_enabled = bool(cfg.get_value("settings", "music_enabled", true))
+	if not owned_characters.has("Striker"):
+		owned_characters.append("Striker")
+	if not owned_outfits.has("Academy Blue"):
+		owned_outfits.append("Academy Blue")
 	if player_uid.is_empty():
 		_generate_player_uid()
 		player_display_name = "Guest-" + player_uid.substr(maxi(0, player_uid.length() - 4))
