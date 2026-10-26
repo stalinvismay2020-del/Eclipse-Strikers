@@ -962,7 +962,7 @@ func _shoot() -> void:
 	if _send_online_ball_action("shoot", dir):
 		ui_hint.text = "SHOT SENT TO HOST"
 		return
-	ball.apply_central_impulse(dir * shot_power
+	ball.apply_central_impulse(dir * shot_power)
 	ball_spin = clampf(-player.global_position.z * 0.12, -1.8, 1.8)
 	kick_anim_time = 0.34
 	_play_sfx("kick")
@@ -1009,6 +1009,9 @@ func _finesse_shot() -> void:
 
 func _tackle() -> void:
 	if not match_active:
+		return
+	if _near_ball() and _send_online_ball_action("tackle", ball.global_position - player.global_position):
+		ui_hint.text = "TACKLE SENT TO HOST"
 		return
 	var closest: CharacterBody3D = null
 	var closest_distance := 2.25
