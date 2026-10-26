@@ -77,6 +77,12 @@ var pitch_wetness := 0.0
 var pitch_wear := 0.0
 var player_technique := 0.72
 var first_touch_cooldown := 0.0
+var hub_content: VBoxContainer
+var match_coins := 0
+var premium_points := 0
+var daily_bonus_claimed := false
+var goal_reward_claimed := false
+var selected_tactic := "Balanced • keep passing lanes"
 
 func _ready() -> void:
 	rng.randomize()
@@ -273,6 +279,9 @@ func _process(delta: float) -> void:
 			match_active = false
 			if score_home > score_away:
 				wins_total += 1
+				match_coins += 50
+			else:
+				match_coins += 20
 			player_level = 1 + int(wins_total / 3) + int(goals_total / 10)
 			_save_progress()
 			var stats := lobby_layer.find_child("ProgressStats", true, false) as Label
@@ -1160,92 +1169,241 @@ func _build_lobby() -> void:
 	var backdrop := ColorRect.new()
 	backdrop.anchor_right = 1.0
 	backdrop.anchor_bottom = 1.0
-	backdrop.color = Color(0.015, 0.025, 0.065, 0.96)
+	backdrop.color = Color(0.012, 0.02, 0.055, 0.97)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	lobby_layer.add_child(backdrop)
-	var center := CenterContainer.new()
-	center.anchor_right = 1.0
-	center.anchor_bottom = 1.0
-	center.offset_left = 18
-	center.offset_right = -18
-	center.offset_top = 10
-	center.offset_bottom = -10
-	lobby_layer.add_child(center)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(320, 500)
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.035, 0.07, 0.14, 0.98)
-	panel_style.border_color = Color(0.1, 0.75, 1.0, 0.9)
-	panel_style.set_border_width_all(2)
-	panel_style.set_corner_radius_all(22)
-	panel.add_theme_stylebox_override("panel", panel_style)
-	center.add_child(panel)
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
-	panel.add_child(margin)
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 7)
-	margin.add_child(stack)
-	var title := Label.new()
-	title.text = "ECLIPSE STRIKERS"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 27)
-	title.add_theme_color_override("font_color", Color(0.25, 0.82, 1.0))
-	var title_tween := create_tween().set_loops()
-	title_tween.tween_property(title, "scale", Vector2(1.035, 1.035), 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	title_tween.tween_property(title, "scale", Vector2.ONE, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	stack.add_child(title)
-	var subtitle := Label.new()
-	subtitle.text = "FOUNDER’S ARENA  •  4v4 ANIME FOOTBALL"
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 13)
-	subtitle.add_theme_color_override("font_color", Color(0.8, 0.88, 1.0))
-	stack.add_child(subtitle)
-	stack.add_child(_lobby_label("CHARACTER"))
+	var root := VBoxContainer.new()
+	root.anchor_right = 1.0
+	root.anchor_bottom = 1.0
+	root.offset_left = 14
+	root.offset_right = -14
+	root.offset_top = 10
+	root.offset_bottom = -10
+	root.add_theme_constant_override("separation", 8)
+	lobby_layer.add_child(root)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	root.add_child(header)
+	var brand := Label.new()
+	brand.text = "ECLIPSE\nSTRIKERS"
+	brand.add_theme_font_size_override("font_size", 22)
+	brand.add_theme_color_override("font_color", Color(0.24, 0.82, 1.0))
+	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(brand)
+	var wallet := Label.new()
+	wallet.text = "◈ %d GP   ◆ %d EP" % [match_coins, premium_points]
+	wallet.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	wallet.add_theme_font_size_override("font_size", 14)
+	wallet.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))
+	header.add_child(wallet)
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 4)
+	root.add_child(nav)
+	for tab in ["HOME", "SQUAD", "STORE", "TACTICS", "SETTINGS"]:
+		var nav_button := Button.new()
+		nav_button.text = tab
+		nav_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nav_button.custom_minimum_size.y = 38
+		nav_button.add_theme_font_size_override("font_size", 11)
+		nav_button.pressed.connect(_show_hub_tab.bind(tab))
+		nav.add_child(nav_button)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(scroll)
+	hub_content = VBoxContainer.new()
+	hub_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hub_content.add_theme_constant_override("separation", 10)
+	scroll.add_child(hub_content)
+	lobby_status = Label.new()
+	lobby_status.text = "OFFLINE BUILD • 4v4 vs AI • Online modes need a multiplayer server."
+	lobby_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lobby_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lobby_status.add_theme_font_size_override("font_size", 11)
+	lobby_status.add_theme_color_override("font_color", Color(0.65, 0.78, 0.9))
+	root.add_child(lobby_status)
+	_show_hub_tab("HOME")
+
+
+func _hub_heading(value: String) -> Label:
+	var label := Label.new()
+	label.text = value
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", Color(0.25, 0.82, 1.0))
+	return label
+
+
+func _hub_text(value: String) -> Label:
+	var label := Label.new()
+	label.text = value
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", Color(0.86, 0.9, 1.0))
+	return label
+
+
+func _hub_button(value: String, callback: Callable) -> Button:
+	var button := Button.new()
+	button.text = value
+	button.custom_minimum_size.y = 42
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_font_size_override("font_size", 13)
+	button.pressed.connect(callback)
+	return button
+
+
+func _show_hub_tab(tab: String) -> void:
+	if not is_instance_valid(hub_content):
+		return
+	for child in hub_content.get_children():
+		child.queue_free()
+	match tab:
+		"SQUAD":
+			hub_content.add_child(_hub_heading("SQUAD • STARTING FOUR"))
+			hub_content.add_child(_hub_text("Your controlled player is locked to third-person. Use quick swaps to change your role and team setup before kick-off."))
+			var lineup := GridContainer.new()
+			lineup.columns = 2
+			lineup.add_theme_constant_override("h_separation", 8)
+			lineup.add_theme_constant_override("v_separation", 8)
+			hub_content.add_child(lineup)
+			for entry in [
+				["01 • YOU", selected_character, "PACE 88  SHOOT 84  STAMINA 82"],
+				["02 • TEAMMATE", "Playmaker", "PACE 78  PASS 92  STAMINA 86"],
+				["03 • TEAMMATE", "Winger", "PACE 94  DRIBBLE 88  STAMINA 80"],
+				["04 • TEAMMATE", "Defender", "PACE 75  TACKLE 91  STAMINA 90"]
+			]:
+				var card := PanelContainer.new()
+				card.custom_minimum_size = Vector2(125, 98)
+				var body := VBoxContainer.new()
+				card.add_child(body)
+				var title := _hub_text(entry[0])
+				title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))
+				body.add_child(title)
+				body.add_child(_hub_text(entry[1]))
+				body.add_child(_hub_text(entry[2]))
+				lineup.add_child(card)
+			var swap_row := HBoxContainer.new()
+			hub_content.add_child(swap_row)
+			swap_row.add_child(_hub_button("QUICK SWAP ROLE", func():
+				var choices := ["Striker", "Playmaker", "Defender", "Eclipse Ace"]
+				var next_index := (choices.find(selected_character) + 1) % choices.size()
+				selected_character = choices[next_index]
+				if character_picker:
+					character_picker.select(next_index)
+				_show_hub_tab("SQUAD")
+			))
+			swap_row.add_child(_hub_button("KIT COLOUR", func():
+				if color_picker:
+					color_picker.select((color_picker.selected + 1) % color_picker.item_count)
+					selected_team_color = color_picker.get_item_text(color_picker.selected)
+				lobby_status.text = "Kit preset changed to " + selected_team_color + "."
+			))
+			hub_content.add_child(_hub_heading("PLAYER CARD • FORM & FITNESS"))
+			hub_content.add_child(_hub_text("FORM  ▲ GOOD     FITNESS  ████████░░  82%     MORALE  HIGH"))
+			hub_content.add_child(_hub_text("Contract: Academy prospect • Season 1 (career contract system is a visual prototype)"))
+			hub_content.add_child(_hub_heading("CUSTOMIZATION"))
+			hub_content.add_child(_hub_text("Kit, ability and character presets are available. Club badge, goalkeeper kit, stadium editor and celebration editor are planned, not connected yet."))
+			_add_existing_loadout_controls()
+		"STORE":
+			hub_content.add_child(_hub_heading("STORE • EARN YOUR LOOK"))
+			hub_content.add_child(_hub_text("GP: %d   •   EP: %d" % [match_coins, premium_points]))
+			hub_content.add_child(_hub_text("Match coins are earned from offline matches. Premium points are a non-purchasable prototype balance; no real-money purchases are enabled."))
+			hub_content.add_child(_hub_button("CLAIM DAILY BONUS  +100 GP", func():
+				if not daily_bonus_claimed:
+					match_coins += 100
+					daily_bonus_claimed = true
+					_save_progress()
+					lobby_status.text = "Daily bonus claimed: +100 GP."
+				else:
+					lobby_status.text = "Daily bonus already claimed on this save."
+				_show_hub_tab("STORE")
+			))
+			hub_content.add_child(_hub_heading("SEASON TRACK"))
+			hub_content.add_child(_hub_text("TIER %d / 10   •   NEXT: KIT COLOUR   •   WEEKLY CHALLENGE: SCORE 3 GOALS" % mini(10, 1 + int(goals_total / 3))))
+			var track := ProgressBar.new()
+			track.max_value = 10
+			track.value = mini(10, goals_total)
+			track.show_percentage = false
+			track.custom_minimum_size.y = 18
+			hub_content.add_child(track)
+			hub_content.add_child(_hub_heading("INBOX / REWARDS"))
+			hub_content.add_child(_hub_text("Match rewards: %d goals • %d wins. Rewards are saved locally on this device." % [goals_total, wins_total]))
+			hub_content.add_child(_hub_button("CLAIM CAREER GOAL REWARD", func():
+				if goals_total >= 3 and not goal_reward_claimed:
+					match_coins += 150
+					goal_reward_claimed = true
+					_save_progress()
+					lobby_status.text = "Career reward claimed: +150 GP."
+				else:
+					lobby_status.text = "Score 3 total goals; reward can be claimed once."
+				_show_hub_tab("STORE")
+			))
+		"TACTICS":
+			hub_content.add_child(_hub_heading("TACTICS • QUICK SETUP"))
+			hub_content.add_child(_hub_text("Formation: 1-1-1-1 • small-sided 4v4. No offside, no fouls, continuous play."))
+			for tactic in ["Balanced • keep passing lanes", "High Press • win it back quickly", "Counter Attack • sprint into space", "Compact • protect the middle"]:
+				hub_content.add_child(_hub_button(tactic, func():
+					selected_tactic = tactic
+					lobby_status.text = "Tactic selected: " + selected_tactic
+				))
+			hub_content.add_child(_hub_text("Teamwork tip: tap CALL PASS to request the ball, move into space, then use PASS to combine."))
+		"SETTINGS":
+			hub_content.add_child(_hub_heading("SETTINGS"))
+			hub_content.add_child(_hub_button("SOUND: " + ("ON" if sound_enabled else "OFF"), func():
+				sound_enabled = not sound_enabled
+				lobby_status.text = "Sound " + ("enabled." if sound_enabled else "muted.")
+				_show_hub_tab("SETTINGS")
+			))
+			hub_content.add_child(_hub_text("Controls: left virtual joystick • right-side SHOOT / PASS / LOB / FINESSE / TACKLE / BURST."))
+			hub_content.add_child(_hub_text("Perspective: third-person follow camera focused on your player. Match rules: no offsides, fouls or throw-ins."))
+			hub_content.add_child(_hub_text("Online privacy: this prototype does not connect to matchmaking, chat, friends, clans or leaderboards."))
+		_:
+			hub_content.add_child(_hub_heading("MATCHDAY • YOUR ARENA"))
+			hub_content.add_child(_hub_text("FOUR PLAYERS. ONE BALL. NO STOPPAGES."))
+			hub_content.add_child(_hub_text("Control one player from a third-person camera. Win with spacing, quick passing and signature abilities."))
+			var modes := GridContainer.new()
+			modes.columns = 2
+			modes.add_theme_constant_override("h_separation", 8)
+			modes.add_theme_constant_override("v_separation", 8)
+			hub_content.add_child(modes)
+			modes.add_child(_hub_button("⚡ QUICK MATCH\nOffline vs AI", _start_match))
+			modes.add_child(_hub_button("🏆 CAREER / CUP\nLocal progression", _start_match))
+			modes.add_child(_hub_button("RANKED DIVISIONS\nOnline • locked", func():
+				lobby_status.text = "Ranked matchmaking is not live yet: an authoritative multiplayer server is required."
+			))
+			modes.add_child(_hub_button("ONLINE CO-OP / PRO CLUBS\nOnline • locked", func():
+				lobby_status.text = "Online 4v4 and friend parties are not connected yet; this build runs offline AI matches."
+			))
+			hub_content.add_child(_hub_heading("YOUR STARTING SQUAD"))
+			hub_content.add_child(_hub_text("YOU • %s   |   PLAYMAKER   |   WINGER   |   DEFENDER" % selected_character.to_upper()))
+			hub_content.add_child(_hub_text("WINS %d   •   GOALS %d   •   LEVEL %d" % [wins_total, goals_total, player_level]))
+			hub_content.add_child(_hub_button("MANAGE SQUAD", func(): _show_hub_tab("SQUAD")))
+			hub_content.add_child(_hub_button("STORE • SEASON TRACK • INBOX", func(): _show_hub_tab("STORE")))
+			hub_content.add_child(_hub_heading("COMMUNITY"))
+			hub_content.add_child(_hub_text("Friends: local placeholder • Clan leaderboard: planned • Quick chat/emotes: planned."))
+			_add_existing_loadout_controls()
+
+
+func _add_existing_loadout_controls() -> void:
+	hub_content.add_child(_lobby_label("PLAYER CLASS"))
 	character_picker = OptionButton.new()
 	for item in ["Striker", "Playmaker", "Defender", "Eclipse Ace"]:
 		character_picker.add_item(item)
-	stack.add_child(character_picker)
-	stack.add_child(_lobby_label("SPECIAL ABILITY"))
+	character_picker.select(maxi(0, ["Striker", "Playmaker", "Defender", "Eclipse Ace"].find(selected_character)))
+	hub_content.add_child(character_picker)
+	hub_content.add_child(_lobby_label("SPECIAL ABILITY"))
 	ability_picker = OptionButton.new()
 	for item in ["Speed Burst", "Power Shot", "Precision Pass"]:
 		ability_picker.add_item(item)
-	stack.add_child(ability_picker)
-	stack.add_child(_lobby_label("TEAM KIT"))
+	hub_content.add_child(ability_picker)
+	hub_content.add_child(_lobby_label("TEAM KIT"))
 	color_picker = OptionButton.new()
 	for item in ["Electric Blue", "Neon Green", "Royal Purple", "Crimson Red"]:
 		color_picker.add_item(item)
-	stack.add_child(color_picker)
-	var stats := Label.new()
-	stats.name = "ProgressStats"
-	stats.text = "LEVEL %d   •   WINS %d   •   GOALS %d" % [player_level, wins_total, goals_total]
-	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stats.add_theme_color_override("font_color", Color(1.0, 0.82, 0.3))
-	stats.add_theme_font_size_override("font_size", 14)
-	stack.add_child(stats)
-	var play := Button.new()
-	play.text = "▶  PLAY MATCH"
-	play.custom_minimum_size.y = 46
-	play.add_theme_font_size_override("font_size", 18)
-	play.add_theme_color_override("font_color", Color.WHITE)
-	play.add_theme_stylebox_override("normal", _panel_style(Color(0.03, 0.42, 0.78), Color(0.25, 0.82, 1.0)))
-	play.pressed.connect(_start_match)
-	stack.add_child(play)
-	var room := Button.new()
-	room.text = "FRIENDS ROOM / ONLINE"
-	room.custom_minimum_size.y = 38
-	room.pressed.connect(_show_online_room_status)
-	stack.add_child(room)
-	lobby_status = Label.new()
-	lobby_status.text = "Choose your loadout and kick off."
-	lobby_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lobby_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lobby_status.add_theme_font_size_override("font_size", 12)
-	lobby_status.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9))
-	stack.add_child(lobby_status)
+	color_picker.select(maxi(0, ["Electric Blue", "Neon Green", "Royal Purple", "Crimson Red"].find(selected_team_color)))
+	hub_content.add_child(color_picker)
+	hub_content.add_child(_hub_button("▶ PLAY OFFLINE 4v4", _start_match))
 
 
 func _lobby_label(value: String) -> Label:
@@ -1313,6 +1471,10 @@ func _save_progress() -> void:
 	cfg.set_value("career", "wins", wins_total)
 	cfg.set_value("career", "goals", goals_total)
 	cfg.set_value("career", "level", player_level)
+	cfg.set_value("wallet", "match_coins", match_coins)
+	cfg.set_value("wallet", "premium_points", premium_points)
+	cfg.set_value("rewards", "daily_bonus_claimed", daily_bonus_claimed)
+	cfg.set_value("rewards", "goal_reward_claimed", goal_reward_claimed)
 	cfg.save("user://football_progress.cfg")
 
 
@@ -1322,6 +1484,10 @@ func _load_progress() -> void:
 		wins_total = int(cfg.get_value("career", "wins", 0))
 		goals_total = int(cfg.get_value("career", "goals", 0))
 		player_level = int(cfg.get_value("career", "level", 1))
+		match_coins = int(cfg.get_value("wallet", "match_coins", 0))
+		premium_points = int(cfg.get_value("wallet", "premium_points", 0))
+		daily_bonus_claimed = bool(cfg.get_value("rewards", "daily_bonus_claimed", false))
+		goal_reward_claimed = bool(cfg.get_value("rewards", "goal_reward_claimed", false))
 
 
 func _spawn_skill_burst(at: Vector3, tint: Color) -> void:
