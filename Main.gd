@@ -33,6 +33,8 @@ var call_pass_button: Button
 var pass_request_active := false
 var pass_request_cooldown := 0.0
 var burst_button: Button
+var jockey_button: Button
+var jockey_mode := false
 var camera_rig: Node3D
 var camera: Camera3D
 var rng := RandomNumberGenerator.new()
@@ -697,6 +699,10 @@ func _build_ui() -> void:
 	call_pass_button.pressed.connect(_request_teammate_pass)
 	burst_button = _make_button(layer, "BURST", Vector2(-128, -62), Color(0.45,0.2,0.8))
 	burst_button.pressed.connect(_burst)
+	jockey_button = _make_button(layer, "JOCKEY", Vector2(-350, -215), Color(0.1, 0.56, 0.42))
+	jockey_button.size = Vector2(108, 58)
+	jockey_button.add_theme_font_size_override("font_size", 12)
+	jockey_button.pressed.connect(_toggle_jockey)
 	ultimate_button = _make_button(layer, "ULTIMATE", Vector2(-238, -155), Color(0.06, 0.72, 0.92))
 	ultimate_button.size = Vector2(112, 58)
 	ultimate_button.pressed.connect(_use_ultimate)
@@ -866,7 +872,7 @@ func _move_user(delta: float) -> void:
 	right.y = 0
 	right = right.normalized()
 	var direction := (right * input_dir.x + forward * -input_dir.y).normalized()
-	var speed := PLAYER_SPEED * (1.8 if burst_time > 0.0 else 1.0)
+	var speed := PLAYER_SPEED * (1.8 if burst_time > 0.0 else (0.62 if jockey_mode else 1.0))
 	var target_velocity := direction * speed
 	var response := 13.0 if direction.length() > 0.1 else 8.0
 	player.velocity.x = move_toward(player.velocity.x, target_velocity.x, response * delta)
@@ -1027,6 +1033,17 @@ func _finesse_shot() -> void:
 	_play_sfx("kick")
 	_spawn_skill_burst(ball.global_position, Color(0.8, 0.25, 1.0))
 	ui_hint.text = "CURVE SHOT! AIM FOR THE CORNER"
+
+func _toggle_jockey() -> void:
+	if not match_active:
+		ui_hint.text = "Start a match to use JOCKEY control"
+		return
+	jockey_mode = not jockey_mode
+	if is_instance_valid(jockey_button):
+		jockey_button.text = "JOCKEY ON" if jockey_mode else "JOCKEY"
+		jockey_button.modulate = Color(0.45, 1.0, 0.72) if jockey_mode else Color.WHITE
+	ui_hint.text = "JOCKEY ON • tighter movement" if jockey_mode else "JOCKEY OFF • full movement"
+
 
 func _tackle() -> void:
 	if not match_active:
@@ -1758,6 +1775,10 @@ func _start_match() -> void:
 		"Eclipse Ace": ui_hint.text = "ECLIPSE ACE • ULTIMATE: ECLIPSE BREAKER"
 		_: ui_hint.text = "STRIKER • GO FOR GOALS"
 	match_active = true
+	jockey_mode = false
+	if is_instance_valid(jockey_button):
+		jockey_button.text = "JOCKEY"
+		jockey_button.modulate = Color.WHITE
 	time_left = MATCH_SECONDS
 	score_home = 0
 	score_away = 0
