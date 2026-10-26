@@ -1283,9 +1283,28 @@ func _hub_text(value: String) -> Label:
 func _hub_button(value: String, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = value
-	button.custom_minimum_size.y = 42
+	button.custom_minimum_size.y = 44
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_color_override("font_color", Color(0.92, 0.97, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 0.9, 0.42))
+	button.add_theme_color_override("font_pressed_color", Color(0.25, 0.9, 1.0))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.045, 0.09, 0.18, 0.98)
+	normal.border_color = Color(0.12, 0.48, 0.72, 0.9)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(8)
+	normal.content_margin_left = 10
+	normal.content_margin_right = 10
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.08, 0.18, 0.31, 1.0)
+	hover.border_color = Color(0.2, 0.82, 1.0, 1.0)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.12, 0.3, 0.42, 1.0)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
 	button.pressed.connect(callback)
 	return button
 
@@ -1423,6 +1442,69 @@ func _show_hub_tab(tab: String) -> void:
 			hub_content.add_child(_hub_heading("COMMUNITY"))
 			hub_content.add_child(_hub_text("Friends: local placeholder • Clan leaderboard: planned • Quick chat/emotes: planned."))
 			_add_existing_loadout_controls()
+
+
+func _build_tasks_panel() -> void:
+	hub_content.add_child(_hub_heading("FIELD ORDERS • CHALLENGES"))
+	hub_content.add_child(_hub_text("Complete objectives in your matches and claim GP rewards. Progress saves on this device; tasks do not reset daily yet."))
+	_add_task_card("FIRST STRIKE", "Score 3 goals", goals_total, 3, 100, "goals")
+	_add_task_card("TEAM ENGINE", "Attempt 5 passes", passes_total, 5, 80, "passes")
+	_add_task_card("PHANTOM FOOTWORK", "Use burst 3 times", burst_uses_total, 3, 80, "bursts")
+	_add_task_card("WINNER'S MINDSET", "Win 1 match", wins_total, 1, 150, "wins")
+	hub_content.add_child(_hub_text("Rewards are local prototype coins. Server-verified online rewards are not connected yet."))
+
+
+func _add_task_card(task_name: String, description: String, progress_value: int, target: int, reward: int, task_id: String) -> void:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.055, 0.12, 0.98)
+	style.border_color = Color(0.12, 0.42, 0.68, 0.9)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	card.add_theme_stylebox_override("panel", style)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	card.add_child(body)
+	var top := HBoxContainer.new()
+	body.add_child(top)
+	var title := _hub_heading(task_name)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	var reward_label := _hub_text("+%d GP" % reward)
+	reward_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))
+	top.add_child(reward_label)
+	body.add_child(_hub_text(description))
+	var bar := ProgressBar.new()
+	bar.max_value = target
+	bar.value = mini(progress_value, target)
+	bar.show_percentage = false
+	bar.custom_minimum_size.y = 12
+	body.add_child(bar)
+	var footer := HBoxContainer.new()
+	body.add_child(footer)
+	var status := _hub_text("%d / %d" % [mini(progress_value, target), target])
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.add_child(status)
+	if bool(tasks_claimed.get(task_id, false)):
+		footer.add_child(_hub_text("CLAIMED ✓"))
+	elif progress_value >= target:
+		footer.add_child(_hub_button("CLAIM REWARD", func():
+			if bool(tasks_claimed.get(task_id, false)):
+				return
+			tasks_claimed[task_id] = true
+			match_coins += reward
+			_save_progress()
+			_show_hub_tab("TASKS")
+			lobby_status.text = "Task complete: %s • +%d GP" % [task_name, reward]
+		))
+	else:
+		footer.add_child(_hub_text("IN PROGRESS"))
+	hub_content.add_child(card)
 
 
 func _add_existing_loadout_controls() -> void:
