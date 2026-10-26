@@ -1718,7 +1718,7 @@ func _add_existing_loadout_controls() -> void:
 	for item in ["Striker", "Playmaker", "Defender", "Eclipse Ace"]:
 		if owned_characters.has(item):
 			character_picker.add_item(item)
-	character_picker.select(maxi(0, character_picker.get_item_index(selected_character))))
+	character_picker.select(maxi(0, character_picker.get_item_index(selected_character)))
 	hub_content.add_child(character_picker)
 	hub_content.add_child(_lobby_label("SPECIAL ABILITY"))
 	ability_picker = OptionButton.new()
@@ -1802,11 +1802,6 @@ func _return_to_lobby() -> void:
 	var stats := lobby_layer.find_child("ProgressStats", true, false) as Label
 	if stats:
 		stats.text = "LEVEL %d   •   WINS %d   •   GOALS %d" % [player_level, wins_total, goals_total]
-
-
-func _show_online_room_status() -> void:
-	lobby_status.text = "Online friend rooms are not connected yet. This build currently supports offline 4v4 vs AI; online play needs a multiplayer server."
-
 
 
 func _show_online_room_status() -> void:
