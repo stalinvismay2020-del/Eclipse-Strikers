@@ -29,6 +29,9 @@ var joystick_base: Control
 var joystick_knob: Control
 var shoot_button: Button
 var pass_button: Button
+var call_pass_button: Button
+var pass_request_active := false
+var pass_request_cooldown := 0.0
 var burst_button: Button
 var camera_rig: Node3D
 var camera: Camera3D
@@ -178,6 +181,10 @@ func _process(delta: float) -> void:
 		burst_cooldown = maxf(0.0, burst_cooldown - delta)
 	if ultimate_cooldown > 0.0:
 		ultimate_cooldown = maxf(0.0, ultimate_cooldown - delta)
+	if pass_request_cooldown > 0.0:
+		pass_request_cooldown = maxf(0.0, pass_request_cooldown - delta)
+	if call_pass_button:
+		call_pass_button.text = "CALL PASS" if pass_request_cooldown <= 0.0 else "CALL %ds" % int(ceil(pass_request_cooldown))
 	if ultimate_button:
 		ultimate_button.text = "ULTIMATE" if ultimate_cooldown <= 0.0 else "ULT " + str(int(ceil(ultimate_cooldown))) + "s"
 	if player_visual and player:
@@ -522,6 +529,10 @@ func _build_ui() -> void:
 	shoot_button.pressed.connect(_shoot)
 	pass_button = _make_button(layer, "PASS", Vector2(-235, -80), Color(0.05,0.4,0.85))
 	pass_button.pressed.connect(_pass_ball)
+	call_pass_button = _make_button(layer, "CALL PASS", Vector2(-350, -80), Color(0.08,0.58,0.42))
+	call_pass_button.size = Vector2(108, 58)
+	call_pass_button.add_theme_font_size_override("font_size", 13)
+	call_pass_button.pressed.connect(_request_teammate_pass)
 	burst_button = _make_button(layer, "BURST", Vector2(-128, -62), Color(0.45,0.2,0.8))
 	burst_button.pressed.connect(_burst)
 	ultimate_button = _make_button(layer, "ULTIMATE", Vector2(-238, -155), Color(0.06, 0.72, 0.92))
@@ -708,6 +719,8 @@ func _move_bots(delta: float) -> void:
 		if not is_instance_valid(bot):
 			continue
 		var target := ball.global_position
+		if pass_request_active and teammates.has(bot):
+			target = ball.global_position
 		if teammates.has(bot) and bot.global_position.distance_to(ball.global_position) > 8.0:
 			target = Vector3(-5, 0, 0) if bot == teammates[0] else Vector3(ball.global_position.x - 3.0, 0, ball.global_position.z + (2.0 if bot == teammates[1] else -2.0))
 		if opponents.has(bot) and bot.global_position.distance_to(ball.global_position) > 11.0:
@@ -724,7 +737,18 @@ func _move_bots(delta: float) -> void:
 		bot.position.z = clampf(bot.position.z, -FIELD_WIDTH / 2.0 + 0.8, FIELD_WIDTH / 2.0 - 0.8)
 		if dir.length() > 0.1:
 			bot.rotation.y = atan2(-dir.x, -dir.z)
-		if bot.global_position.distance_to(ball.global_position) < 1.25 and rng.randf() < delta * 1.4:
+		if pass_request_active and teammates.has(bot) and bot.global_position.distance_to(ball.global_position) < 1.65:
+			var receive_point := player.global_position + Vector3(0.0, 0.25, 0.0)
+			var pass_dir := (receive_point - ball.global_position).normalized()
+			pass_dir.y = 0.045
+			ball.linear_velocity = Vector3.ZERO
+			ball.apply_central_impulse(pass_dir.normalized() * 8.5)
+			pass_request_active = false
+			pass_request_cooldown = 3.0
+			ui_hint.text = "TEAMMATE PASS!  •  CONTROL THE BALL"
+			_play_sfx("pass")
+			_spawn_skill_burst(ball.global_position, Color(0.15, 0.9, 0.55))
+		elif bot.global_position.distance_to(ball.global_position) < 1.25 and rng.randf() < delta * 1.4:
 			var goal_x := -FIELD_LENGTH / 2.0 if opponents.has(bot) else FIELD_LENGTH / 2.0
 			var aim := Vector3(goal_x, 0.15, rng.randf_range(-2.5, 2.5)) - ball.global_position
 			ball.apply_central_impulse(aim.normalized() * rng.randf_range(4.0, 7.0))
@@ -764,6 +788,27 @@ func _shoot() -> void:
 	_play_sfx("kick")
 	_spawn_skill_burst(ball.global_position, Color(1.0, 0.25, 0.12))
 	ui_hint.text = "⚡ DIRECT SHOT! ⚡"
+
+func _request_teammate_pass() -> void:
+	if not match_active:
+		ui_hint.text = "Start a match before calling for a pass"
+		return
+	if pass_request_cooldown > 0.0 or pass_request_active:
+		ui_hint.text = "Your teammate is already responding!"
+		return
+	if teammates.is_empty():
+		ui_hint.text = "No teammate available"
+		return
+	var nearest := teammates[0]
+	var nearest_distance := nearest.global_position.distance_to(ball.global_position)
+	for mate in teammates:
+		var distance := mate.global_position.distance_to(ball.global_position)
+		if distance < nearest_distance:
+			nearest = mate
+			nearest_distance = distance
+	pass_request_active = true
+	pass_request_cooldown = 1.0
+	ui_hint.text = "PASS!  •  TEAMMATE MOVING TO THE BALL"
 
 func _pass_ball() -> void:
 	if not match_active or not _near_ball():
