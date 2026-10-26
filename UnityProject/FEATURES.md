@@ -8,6 +8,8 @@ This file separates implemented prototype features from features that still need
 - Procedural stadium stands, decorative crowd tiers, stadium lights and colored spotlights
 - Extra primitive-based player details (hair, jersey trim, crest, boots, arms and legs)
 - Simple procedural running-cycle animation driven by player movement
+- Basic goalkeeper figures that track the ball laterally and attempt proximity-based shot deflections
+- Dynamic touch-origin movement control with a visible joystick indicator
 - Ball rigidbody physics
 - Five-minute countdown, score display, goal reset and full-time/rematch flow
 - Third-person camera that follows the controlled player
