@@ -188,7 +188,7 @@ func _create_loading_screen() -> CanvasLayer:
 	status.add_theme_color_override("font_color", Color(0.9, 0.92, 1.0))
 	stack.add_child(status)
 	var footer := Label.new()
-	footer.text = "OFFLINE MATCHES  •  4V4 ARENA"
+	footer.text = "PLAY OFFLINE ANYTIME  •  RANKED NEEDS INTERNET"
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer.add_theme_font_size_override("font_size", 11)
 	footer.add_theme_color_override("font_color", Color(0.5, 0.58, 0.72))
@@ -1245,7 +1245,7 @@ func _build_lobby() -> void:
 	hub_content.add_theme_constant_override("separation", 10)
 	scroll.add_child(hub_content)
 	lobby_status = Label.new()
-	lobby_status.text = "OFFLINE BUILD • 4v4 vs AI • Online modes need a multiplayer server."
+	lobby_status.text = "OFFLINE READY • Quick Match and Career need no internet • Ranked requires internet."
 	lobby_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lobby_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lobby_status.add_theme_font_size_override("font_size", 11)
@@ -1387,10 +1387,11 @@ func _show_hub_tab(tab: String) -> void:
 			))
 			hub_content.add_child(_hub_text("Controls: left virtual joystick • right-side SHOOT / PASS / LOB / FINESSE / TACKLE / BURST."))
 			hub_content.add_child(_hub_text("Perspective: third-person follow camera focused on your player. Match rules: no offsides, fouls or throw-ins."))
-			hub_content.add_child(_hub_text("Online privacy: this prototype does not connect to matchmaking, chat, friends, clans or leaderboards."))
+			hub_content.add_child(_hub_text("Offline-first: launch and play Quick Match/Career without internet. Ranked matches will require internet and a live ranked server. Online matchmaking, chat, friends, clans and leaderboards are not live yet."))
 		_:
 			hub_content.add_child(_hub_heading("MATCHDAY • YOUR ARENA"))
 			hub_content.add_child(_hub_text("FOUR PLAYERS. ONE BALL. NO STOPPAGES."))
+			hub_content.add_child(_hub_text("OFFLINE PLAY: Quick Match and Career run without Wi-Fi or mobile data. Only Ranked will require internet."))
 			hub_content.add_child(_hub_text("Control one player from a third-person camera. Win with spacing, quick passing and signature abilities."))
 			var modes := GridContainer.new()
 			modes.columns = 2
@@ -1399,9 +1400,7 @@ func _show_hub_tab(tab: String) -> void:
 			hub_content.add_child(modes)
 			modes.add_child(_hub_button("⚡ QUICK MATCH\nOffline vs AI", _start_match))
 			modes.add_child(_hub_button("🏆 CAREER / CUP\nLocal progression", _start_match))
-			modes.add_child(_hub_button("RANKED DIVISIONS\nOnline • locked", func():
-				lobby_status.text = "Ranked matchmaking is not live yet: an authoritative multiplayer server is required."
-			))
+			modes.add_child(_hub_button("RANKED DIVISIONS\nInternet required", _request_ranked_match))
 			modes.add_child(_hub_button("ONLINE CO-OP / PRO CLUBS\nOnline • locked", func():
 				lobby_status.text = "Online 4v4 and friend parties are not connected yet; this build runs offline AI matches."
 			))
