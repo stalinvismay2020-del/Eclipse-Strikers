@@ -62,7 +62,14 @@ jobs:
           rm -rf android/build
 
       - name: Verify project parses
-        run: Godot_v4.3-stable_linux.x86_64 --headless --editor --path . --quit
+        shell: bash
+        run: |
+          set -euo pipefail
+          Godot_v4.3-stable_linux.x86_64 --headless --editor --path . --quit 2>&1 | tee godot-parse.log
+          if grep -E 'SCRIPT ERROR:|Parse Error:|Failed to load script|ERROR: Failed to load' godot-parse.log; then
+            echo "Godot reported script parse/load errors; refusing to export a broken APK."
+            exit 1
+          fi
 
       - name: Generate CI debug keystore
         run: |
