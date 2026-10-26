@@ -73,6 +73,10 @@ var sound_button: Button
 var ultimate_fx_timer := 0.0
 var ball_spin := 0.0
 var dribble_knock_cooldown := 0.0
+var pitch_wetness := 0.0
+var pitch_wear := 0.0
+var player_technique := 0.72
+var first_touch_cooldown := 0.0
 
 func _ready() -> void:
 	rng.randomize()
@@ -282,6 +286,8 @@ func _process(delta: float) -> void:
 		burst_cooldown = maxf(0.0, burst_cooldown - delta)
 	if dribble_knock_cooldown > 0.0:
 		dribble_knock_cooldown = maxf(0.0, dribble_knock_cooldown - delta)
+	if first_touch_cooldown > 0.0:
+		first_touch_cooldown = maxf(0.0, first_touch_cooldown - delta)
 	if ultimate_cooldown > 0.0:
 		ultimate_cooldown = maxf(0.0, ultimate_cooldown - delta)
 	if pass_request_cooldown > 0.0:
@@ -343,6 +349,8 @@ func _physics_process(delta: float) -> void:
 	_move_user(delta)
 	_move_bots(delta)
 	_move_ball(delta)
+	_update_pitch_conditions(delta)
+	_update_adaptive_ai(delta)
 	_check_goals()
 
 func _build_world() -> void:
@@ -843,6 +851,8 @@ func _move_bots(delta: float) -> void:
 			target = Vector3(-5, 0, 0) if bot == teammates[0] else Vector3(ball.global_position.x - 3.0, 0, ball.global_position.z + (2.0 if bot == teammates[1] else -2.0))
 		if opponents.has(bot) and bot.global_position.distance_to(ball.global_position) > 11.0:
 			target = Vector3(5, 0, ball.global_position.z * 0.6)
+		if opponents.has(bot) and bot.has_meta("pressing") and bool(bot.get_meta("pressing")):
+			target = ball.global_position + Vector3(-1.5, 0, signf(bot.global_position.z - ball.global_position.z) * 1.4)
 		var to_target := target - bot.global_position
 		to_target.y = 0
 		var dir := to_target.normalized()
@@ -871,6 +881,19 @@ func _move_bots(delta: float) -> void:
 			var aim := Vector3(goal_x, 0.15, rng.randf_range(-2.5, 2.5)) - ball.global_position
 			ball.apply_central_impulse(aim.normalized() * rng.randf_range(4.0, 7.0))
 
+func _update_pitch_conditions(delta: float) -> void:
+	if not match_active:
+		return
+	pitch_wear = clampf(pitch_wear + delta / maxf(MATCH_SECONDS, 1.0) * 0.22, 0.0, 1.0)
+
+func _update_adaptive_ai(_delta: float) -> void:
+	if not match_active:
+		return
+	var trailing_late := score_away < score_home and time_left < 35.0
+	for rival in opponents:
+		if is_instance_valid(rival):
+			rival.set_meta("pressing", trailing_late)
+
 func _move_ball(_delta: float) -> void:
 	if ball.global_position.y < BALL_RADIUS:
 		var p := ball.global_position
@@ -883,6 +906,14 @@ func _move_ball(_delta: float) -> void:
 			ball.linear_velocity.z *= 0.94
 		else:
 			ball.linear_velocity.y = 0.0
+			var ground_damping := lerpf(0.94, 0.985, pitch_wetness)
+			ball.linear_velocity.x *= ground_damping
+			ball.linear_velocity.z *= ground_damping
+		if ball.global_position.distance_to(player.global_position) < 1.15 and ball.linear_velocity.length() > 1.5 and first_touch_cooldown <= 0.0:
+			var relative_speed := ball.linear_velocity.length()
+			var control_factor := clampf(player_technique - relative_speed * 0.025 - pitch_wetness * 0.12, 0.22, 0.9)
+			ball.linear_velocity *= 1.0 - control_factor * 0.48
+			first_touch_cooldown = 0.55
 	if absf(ball.global_position.z) > FIELD_WIDTH / 2.0 - 0.4:
 		ball.linear_velocity.z *= -0.65
 		ball.global_position.z = clampf(ball.global_position.z, -FIELD_WIDTH / 2.0 + 0.5, FIELD_WIDTH / 2.0 - 0.5)
