@@ -1382,7 +1382,8 @@ func _show_hub_tab(tab: String) -> void:
 			hub_content.add_child(_hub_text("Kit, ability and character presets are available. Club badge, goalkeeper kit, stadium editor and celebration editor are planned, not connected yet."))
 			_add_existing_loadout_controls()
 		"STORE":
-			hub_content.add_child(_hub_heading("STORE • EARN YOUR LOOK"))
+			_build_store_panel()
+			hub_content.add_child(_hub_heading("CAREER REWARDS • EARN MORE GP"))
 			hub_content.add_child(_hub_text("GP: %d   •   EP: %d" % [match_coins, premium_points]))
 			hub_content.add_child(_hub_text("Match coins are earned from offline matches. Premium points are a non-purchasable prototype balance; no real-money purchases are enabled."))
 			hub_content.add_child(_hub_button("CLAIM DAILY BONUS  +100 GP", func():
@@ -1693,8 +1694,9 @@ func _add_existing_loadout_controls() -> void:
 	hub_content.add_child(_lobby_label("PLAYER CLASS"))
 	character_picker = OptionButton.new()
 	for item in ["Striker", "Playmaker", "Defender", "Eclipse Ace"]:
-		character_picker.add_item(item)
-	character_picker.select(maxi(0, ["Striker", "Playmaker", "Defender", "Eclipse Ace"].find(selected_character)))
+		if owned_characters.has(item):
+			character_picker.add_item(item)
+	character_picker.select(maxi(0, character_picker.get_item_index(selected_character))))
 	hub_content.add_child(character_picker)
 	hub_content.add_child(_lobby_label("SPECIAL ABILITY"))
 	ability_picker = OptionButton.new()
@@ -1728,7 +1730,9 @@ func _start_match() -> void:
 	if pause_button:
 		pause_button.text = "PAUSE"
 	if is_instance_valid(character_picker):
-		selected_character = character_picker.get_item_text(character_picker.selected)
+		var chosen_character := character_picker.get_item_text(character_picker.selected)
+		if owned_characters.has(chosen_character):
+			selected_character = chosen_character
 	if is_instance_valid(ability_picker):
 		selected_ability = ability_picker.get_item_text(ability_picker.selected)
 	if is_instance_valid(color_picker):
