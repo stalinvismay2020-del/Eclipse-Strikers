@@ -959,7 +959,10 @@ func _shoot() -> void:
 	var shot_power := 13.0
 	if selected_ability == "Power Shot":
 		shot_power = 18.0
-	ball.apply_central_impulse(dir * shot_power)
+	if _send_online_ball_action("shoot", dir):
+		ui_hint.text = "SHOT SENT TO HOST"
+		return
+	ball.apply_central_impulse(dir * shot_power
 	ball_spin = clampf(-player.global_position.z * 0.12, -1.8, 1.8)
 	kick_anim_time = 0.34
 	_play_sfx("kick")
@@ -979,6 +982,9 @@ func _lob_through_pass() -> void:
 		target = best.global_position + (-best.global_basis.z * 2.5)
 	var dir := (target - ball.global_position).normalized()
 	dir.y = 0.34
+	if _send_online_ball_action("lob", dir):
+		ui_hint.text = "LOFTED PASS SENT TO HOST"
+		return
 	ball.apply_central_impulse(dir.normalized() * 9.2)
 	ball_spin = clampf(player.global_position.z * 0.05, -0.7, 0.7)
 	kick_anim_time = 0.3
@@ -991,6 +997,9 @@ func _finesse_shot() -> void:
 		return
 	var target := Vector3(FIELD_LENGTH / 2.0 + 2.0, 1.0, clampf(-player.global_position.z * 0.7 + 1.0, -2.4, 2.4))
 	var dir := (target - ball.global_position).normalized()
+	if _send_online_ball_action("finesse", dir):
+		ui_hint.text = "FINESSE SHOT SENT TO HOST"
+		return
 	ball.apply_central_impulse(dir * 10.5)
 	ball_spin = -1.8 if player.global_position.z >= 0.0 else 1.8
 	kick_anim_time = 0.4
@@ -1049,6 +1058,9 @@ func _pass_ball() -> void:
 	var pass_power := 7.5
 	if selected_ability == "Precision Pass":
 		pass_power = 11.0
+	if _send_online_ball_action("pass", dir):
+		ui_hint.text = "PASS SENT TO HOST"
+		return
 	ball.apply_central_impulse(dir.normalized() * pass_power)
 	ball_spin = clampf(player.global_position.z * 0.04, -0.5, 0.5)
 	kick_anim_time = 0.28
@@ -1677,6 +1689,48 @@ func _rpc_receive_state(peer_id: int, position: Vector3, rotation_y: float, ball
 		score_away = away_score
 		time_left = clampf(match_clock, 0.0, MATCH_SECONDS)
 		_update_hud()
+
+
+
+func _send_online_ball_action(action: String, direction: Vector3) -> bool:
+	if not network_match_enabled or multiplayer.multiplayer_peer == null:
+		return false
+	if multiplayer.is_server():
+		return false
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return false
+	rpc_id(1, "_rpc_request_ball_action", action, direction.normalized())
+	return true
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_ball_action(action: String, direction: Vector3) -> void:
+	if not multiplayer.is_server() or not is_instance_valid(ball):
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not remote_players.has(sender_id) or not is_instance_valid(remote_players[sender_id]):
+		return
+	var remote_avatar: CharacterBody3D = remote_players[sender_id]
+	if remote_avatar.global_position.distance_to(ball.global_position) > 2.8:
+		return
+	var dir := direction.normalized()
+	if dir.length_squared() < 0.5:
+		return
+	match action:
+		"shoot":
+			ball.apply_central_impulse(dir * 13.0)
+		"finesse":
+			ball.apply_central_impulse(dir * 10.5)
+			ball_spin = clampf(-remote_avatar.global_position.z * 0.12, -1.8, 1.8)
+		"pass":
+			ball.apply_central_impulse(dir * 7.5)
+		"lob":
+			dir.y = maxf(dir.y, 0.34)
+			ball.apply_central_impulse(dir.normalized() * 9.2)
+		"tackle":
+			ball.apply_central_impulse((remote_avatar.global_position.direction_to(ball.global_position) * 5.5) + Vector3(0, 0.3, 0))
+		_:
+			return
 
 
 func _save_progress() -> void:
