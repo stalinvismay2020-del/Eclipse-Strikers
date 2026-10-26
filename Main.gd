@@ -1543,9 +1543,9 @@ func _build_online_panel() -> void:
 	network_status_label = _hub_text("Connection: " + network_status)
 	hub_content.add_child(network_status_label)
 	hub_content.add_child(_hub_heading("PLAYER REQUESTS"))
-	hub_content.add_child(_hub_text("Enter a connected player's peer ID to send a request. The other player can accept or reject it."))
+	hub_content.add_child(_hub_text("Send a request by the player's UID or room peer ID. They can accept or reject it. Both players must be in the same connected room."))
 	friend_target_input = LineEdit.new()
-	friend_target_input.placeholder_text = "Target peer ID (e.g. 2)"
+	friend_target_input.placeholder_text = "Player UID or peer ID"
 	friend_target_input.custom_minimum_size.y = 42
 	hub_content.add_child(friend_target_input)
 	hub_content.add_child(_hub_button("SEND PLAYER REQUEST", _send_friend_request))
@@ -1563,10 +1563,18 @@ func _send_friend_request() -> void:
 		_set_friend_request_status("Join or create a room before sending a request.")
 		return
 	var target_text := friend_target_input.text.strip_edges() if is_instance_valid(friend_target_input) else ""
-	if not target_text.is_valid_int():
-		_set_friend_request_status("Enter a valid peer ID.")
+	var target_id := -1
+	if target_text.is_valid_int():
+		target_id = int(target_text)
+	else:
+		for peer_key in player_profiles.keys():
+			var profile: Dictionary = player_profiles[peer_key]
+			if str(profile.get("uid", "")).to_upper() == target_text.to_upper():
+				target_id = int(peer_key)
+				break
+	if target_id < 0:
+		_set_friend_request_status("Enter a connected player's UID or peer ID.")
 		return
-	var target_id := int(target_text)
 	if target_id <= 0 or target_id == multiplayer.get_unique_id():
 		_set_friend_request_status("Choose another connected player's peer ID.")
 		return
