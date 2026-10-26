@@ -74,17 +74,116 @@ var ultimate_fx_timer := 0.0
 
 func _ready() -> void:
 	rng.randomize()
+	var loading := _create_loading_screen()
+	await get_tree().process_frame
+	_set_loading_stage(loading, 8, "PREPARING THE ARENA")
+	await get_tree().process_frame
 	_build_world()
+	_set_loading_stage(loading, 22, "BUILDING THE PITCH")
+	await get_tree().process_frame
 	_build_pitch()
 	_build_goals()
+	_set_loading_stage(loading, 40, "ASSEMBLING THE TEAMS")
+	await get_tree().process_frame
 	_build_players()
 	_build_ball()
+	_set_loading_stage(loading, 60, "SETTING UP CAMERA")
+	await get_tree().process_frame
 	_build_camera()
 	_build_ui()
+	_set_loading_stage(loading, 78, "LOADING YOUR CAREER")
+	await get_tree().process_frame
 	_load_progress()
 	_build_lobby()
 	_update_hud()
-	_build_founder_intro()
+	_set_loading_stage(loading, 100, "READY TO PLAY")
+	await get_tree().create_timer(0.25).timeout
+	if is_instance_valid(loading):
+		var fade := create_tween()
+		fade.tween_property(loading, "modulate:a", 0.0, 0.35)
+		fade.tween_callback(func() -> void:
+			if is_instance_valid(loading):
+				loading.queue_free()
+			_build_founder_intro()
+		)
+
+func _create_loading_screen() -> CanvasLayer:
+	var layer := CanvasLayer.new()
+	layer.name = "StartupLoadingScreen"
+	layer.layer = 50
+	add_child(layer)
+	var backdrop := ColorRect.new()
+	backdrop.anchor_right = 1.0
+	backdrop.anchor_bottom = 1.0
+	backdrop.color = Color(0.012, 0.018, 0.045, 1.0)
+	layer.add_child(backdrop)
+	var center := CenterContainer.new()
+	center.anchor_right = 1.0
+	center.anchor_bottom = 1.0
+	center.offset_left = 24
+	center.offset_right = -24
+	layer.add_child(center)
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 12)
+	stack.custom_minimum_size = Vector2(280, 0)
+	center.add_child(stack)
+	var emblem := Label.new()
+	emblem.text = "◉"
+	emblem.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	emblem.add_theme_font_size_override("font_size", 76)
+	emblem.add_theme_color_override("font_color", Color(0.18, 0.68, 1.0))
+	stack.add_child(emblem)
+	var title := Label.new()
+	title.text = "ECLIPSE STRIKERS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 27)
+	title.add_theme_color_override("font_color", Color(0.38, 0.84, 1.0))
+	stack.add_child(title)
+	var subtitle := Label.new()
+	subtitle.text = "3D ANIME FOOTBALL"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 13)
+	subtitle.add_theme_color_override("font_color", Color(0.75, 0.8, 0.92))
+	stack.add_child(subtitle)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 16)
+	stack.add_child(spacer)
+	var progress := ProgressBar.new()
+	progress.name = "LoadingProgress"
+	progress.min_value = 0
+	progress.max_value = 100
+	progress.value = 0
+	progress.show_percentage = false
+	progress.custom_minimum_size = Vector2(0, 12)
+	stack.add_child(progress)
+	var status := Label.new()
+	status.name = "LoadingStatus"
+	status.text = "INITIALIZING..."
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status.add_theme_font_size_override("font_size", 14)
+	status.add_theme_color_override("font_color", Color(0.9, 0.92, 1.0))
+	stack.add_child(status)
+	var footer := Label.new()
+	footer.text = "OFFLINE MATCHES  •  4V4 ARENA"
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	footer.add_theme_font_size_override("font_size", 11)
+	footer.add_theme_color_override("font_color", Color(0.5, 0.58, 0.72))
+	stack.add_child(footer)
+	var pulse := create_tween().set_loops()
+	pulse.tween_property(emblem, "scale", Vector2(1.12, 1.12), 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse.tween_property(emblem, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	return layer
+
+func _set_loading_stage(layer: CanvasLayer, progress_value: float, message: String) -> void:
+	if not is_instance_valid(layer):
+		return
+	var progress := layer.find_child("LoadingProgress", true, false) as ProgressBar
+	var status := layer.find_child("LoadingStatus", true, false) as Label
+	if progress:
+		progress.value = progress_value
+	if status:
+		status.text = message
 
 
 func _build_founder_intro() -> void:
