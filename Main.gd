@@ -1443,6 +1443,11 @@ func _lobby_label(value: String) -> Label:
 	return label
 
 
+func _request_ranked_match() -> void:
+	# Ranked requires an online authoritative service; do not fake matchmaking locally.
+	lobby_status.text = "RANKED NEEDS INTERNET AND A LIVE RANKED SERVER. The server is not deployed yet. Quick Match and Career work fully offline."
+
+
 func _start_match() -> void:
 	is_paused = false
 	if pause_button:
