@@ -96,6 +96,12 @@ var network_match_enabled := false
 var friend_target_input: LineEdit
 var friend_request_status_label: Label
 var pending_friend_request_from := -1
+var player_uid := ""
+var player_display_name := "Guest Player"
+var account_mode := "Guest"
+var player_profiles: Dictionary = {}
+var profile_uid_label: Label
+var profile_status_label: Label
 
 
 func _ready() -> void:
@@ -1230,7 +1236,7 @@ func _build_lobby() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 4)
 	root.add_child(nav)
-	for tab in ["HOME", "SQUAD", "ONLINE", "STORE", "TACTICS", "SETTINGS"]:
+	for tab in ["HOME", "SQUAD", "ONLINE", "PROFILE", "STORE", "TACTICS", "SETTINGS"]:
 		var nav_button := Button.new()
 		nav_button.text = tab
 		nav_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1292,6 +1298,8 @@ func _show_hub_tab(tab: String) -> void:
 	match tab:
 		"ONLINE":
 			_build_online_panel()
+		"PROFILE":
+			_build_profile_panel()
 		"SQUAD":
 			hub_content.add_child(_hub_heading("SQUAD • STARTING FOUR"))
 			hub_content.add_child(_hub_text("Your controlled player is locked to third-person. Use quick swaps to change your role and team setup before kick-off."))
@@ -1647,6 +1655,8 @@ func _host_online_room() -> void:
 		multiplayer.peer_disconnected.connect(_on_network_peer_disconnected)
 	network_status = "Hosting on UDP port %d • waiting for peers" % port
 	network_match_enabled = true
+	player_profiles.clear()
+	player_profiles[1] = {"uid": player_uid, "name": player_display_name}
 	_set_network_status(network_status)
 
 
@@ -1689,6 +1699,7 @@ func _disconnect_online_room() -> void:
 			avatar.queue_free()
 	remote_players.clear()
 	network_player_states.clear()
+	player_profiles.clear()
 	network_status = "Offline"
 	_set_network_status(network_status)
 
@@ -1696,6 +1707,7 @@ func _disconnect_online_room() -> void:
 func _on_network_connected() -> void:
 	network_status = "Connected to host • starting match"
 	_set_network_status(network_status)
+	rpc_id(1, "_rpc_register_profile", player_uid, player_display_name)
 	if not match_active:
 		_start_match()
 
@@ -1841,6 +1853,9 @@ func _rpc_request_ball_action(action: String, direction: Vector3) -> void:
 
 func _save_progress() -> void:
 	var cfg := ConfigFile.new()
+	cfg.set_value("account", "uid", player_uid)
+	cfg.set_value("account", "display_name", player_display_name)
+	cfg.set_value("account", "mode", account_mode)
 	cfg.set_value("career", "wins", wins_total)
 	cfg.set_value("career", "goals", goals_total)
 	cfg.set_value("career", "level", player_level)
@@ -1854,6 +1869,9 @@ func _save_progress() -> void:
 func _load_progress() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load("user://football_progress.cfg") == OK:
+		player_uid = str(cfg.get_value("account", "uid", ""))
+		player_display_name = str(cfg.get_value("account", "display_name", "Guest Player"))
+		account_mode = str(cfg.get_value("account", "mode", "Guest"))
 		wins_total = int(cfg.get_value("career", "wins", 0))
 		goals_total = int(cfg.get_value("career", "goals", 0))
 		player_level = int(cfg.get_value("career", "level", 1))
@@ -1861,6 +1879,113 @@ func _load_progress() -> void:
 		premium_points = int(cfg.get_value("wallet", "premium_points", 0))
 		daily_bonus_claimed = bool(cfg.get_value("rewards", "daily_bonus_claimed", false))
 		goal_reward_claimed = bool(cfg.get_value("rewards", "goal_reward_claimed", false))
+	if player_uid.is_empty():
+		_generate_player_uid()
+		player_display_name = "Guest-" + player_uid.substr(maxi(0, player_uid.length() - 4))
+		account_mode = "Guest"
+		_save_progress()
+	if player_display_name.is_empty():
+		player_display_name = "Guest-" + player_uid.substr(maxi(0, player_uid.length() - 4))
+
+
+func _generate_player_uid() -> void:
+	# Locally generated, persistent ID. Global uniqueness requires a backend account service.
+	var crypto := Crypto.new()
+	var bytes := crypto.generate_random_bytes(12)
+	player_uid = "ES-" + bytes.hex_encode().to_upper()
+
+
+func _build_profile_panel() -> void:
+	hub_content.add_child(_hub_heading("PLAYER PROFILE"))
+	hub_content.add_child(_hub_text("Your profile is saved on this device. Guest play works offline; online accounts and global UID registration need a configured backend."))
+	hub_content.add_child(_hub_heading("DISPLAY NAME"))
+	var name_input := LineEdit.new()
+	name_input.text = player_display_name
+	name_input.placeholder_text = "Your player name"
+	name_input.custom_minimum_size.y = 42
+	hub_content.add_child(name_input)
+	hub_content.add_child(_hub_heading("YOUR PLAYER UID"))
+	profile_uid_label = _hub_text(player_uid)
+	profile_uid_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hub_content.add_child(profile_uid_label)
+	hub_content.add_child(_hub_button("COPY MY UID", func():
+		DisplayServer.clipboard_set(player_uid)
+		_set_profile_status("Your UID was copied.")
+	))
+	hub_content.add_child(_hub_button("SAVE GUEST PROFILE", func():
+		var clean_name := name_input.text.strip_edges()
+		if clean_name.is_empty():
+			_set_profile_status("Enter a display name first.")
+			return
+		player_display_name = clean_name.left(20)
+		account_mode = "Guest"
+		_save_progress()
+		_set_profile_status("Guest profile saved on this device.")
+		if multiplayer.multiplayer_peer != null and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+			if multiplayer.is_server():
+				player_profiles[1] = {"uid": player_uid, "name": player_display_name}
+				_broadcast_player_profiles()
+			else:
+				rpc_id(1, "_rpc_register_profile", player_uid, player_display_name)
+		_show_hub_tab("PROFILE")
+	))
+	hub_content.add_child(_hub_button("SIGN IN WITH GOOGLE", _google_sign_in_unavailable))
+	profile_status_label = _hub_text("Account mode: " + account_mode)
+	hub_content.add_child(profile_status_label)
+	hub_content.add_child(_hub_heading("PLAYERS IN THIS ROOM"))
+	if multiplayer.multiplayer_peer != null and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		var found_any := false
+		for peer_key in player_profiles.keys():
+			var entry: Dictionary = player_profiles[peer_key]
+			var remote_uid := str(entry.get("uid", ""))
+			if int(peer_key) == multiplayer.get_unique_id() or remote_uid.is_empty():
+				continue
+			found_any = true
+			var peer_row := HBoxContainer.new()
+			peer_row.add_child(_hub_text("%s • %s" % [str(entry.get("name", "Player")), remote_uid]))
+			peer_row.add_child(_hub_button("COPY UID", func(uid_to_copy: String = remote_uid):
+				DisplayServer.clipboard_set(uid_to_copy)
+				_set_profile_status("Player UID copied.")
+			))
+			hub_content.add_child(peer_row)
+		if not found_any:
+			hub_content.add_child(_hub_text("No other player profiles received yet. Players must join this room and register their guest profile."))
+	else:
+		hub_content.add_child(_hub_text("Join the same online room as another player to see their UID here."))
+	hub_content.add_child(_hub_text("UIDs are currently local-profile IDs, not server-verified accounts. Use the ONLINE tab for requests to players in the same room."))
+
+
+func _set_profile_status(message: String) -> void:
+	if is_instance_valid(profile_status_label):
+		profile_status_label.text = message
+	if is_instance_valid(lobby_status):
+		lobby_status.text = message
+
+
+func _google_sign_in_unavailable() -> void:
+	_set_profile_status("Google sign-in is not active yet: configure Google OAuth and a verified auth backend before enabling it.")
+
+
+func _broadcast_player_profiles() -> void:
+	if not multiplayer.is_server():
+		return
+	rpc("_rpc_player_profiles_updated", player_profiles)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_register_profile(uid: String, display_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 1 or uid.length() < 8 or uid.length() > 40:
+		return
+	player_profiles[sender_id] = {"uid": uid, "name": display_name.left(20)}
+	_broadcast_player_profiles()
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_player_profiles_updated(profiles: Dictionary) -> void:
+	player_profiles = profiles.duplicate(true)
 
 
 func _spawn_skill_burst(at: Vector3, tint: Color) -> void:
