@@ -83,6 +83,17 @@ var premium_points := 0
 var daily_bonus_claimed := false
 var goal_reward_claimed := false
 var selected_tactic := "Balanced • keep passing lanes"
+# Direct-IP ENet prototype. Public matchmaking still requires a reachable host or relay.
+var network_peer: ENetMultiplayerPeer
+var network_status := "Offline"
+var network_send_accumulator := 0.0
+var network_player_states: Dictionary = {}
+var remote_players: Dictionary = {}
+var online_address_input: LineEdit
+var online_port_input: SpinBox
+var network_status_label: Label
+var network_match_enabled := false
+
 
 func _ready() -> void:
 	rng.randomize()
@@ -273,6 +284,7 @@ func _build_founder_intro() -> void:
 
 func _process(delta: float) -> void:
 	_update_aim_guide()
+	_update_network_session(delta)
 	if match_active and not is_paused:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
@@ -356,11 +368,12 @@ func _physics_process(delta: float) -> void:
 		_move_ball(delta)
 		return
 	_move_user(delta)
-	_move_bots(delta)
-	_move_ball(delta)
-	_update_pitch_conditions(delta)
-	_update_adaptive_ai(delta)
-	_check_goals()
+	if multiplayer.multiplayer_peer == null or multiplayer.is_server():
+		_move_bots(delta)
+		_move_ball(delta)
+		_update_pitch_conditions(delta)
+		_update_adaptive_ai(delta)
+		_check_goals()
 
 func _build_world() -> void:
 	var env := WorldEnvironment.new()
@@ -1199,7 +1212,7 @@ func _build_lobby() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 4)
 	root.add_child(nav)
-	for tab in ["HOME", "SQUAD", "STORE", "TACTICS", "SETTINGS"]:
+	for tab in ["HOME", "SQUAD", "ONLINE", "STORE", "TACTICS", "SETTINGS"]:
 		var nav_button := Button.new()
 		nav_button.text = tab
 		nav_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1259,6 +1272,8 @@ func _show_hub_tab(tab: String) -> void:
 	for child in hub_content.get_children():
 		child.queue_free()
 	match tab:
+		"ONLINE":
+			_build_online_panel()
 		"SQUAD":
 			hub_content.add_child(_hub_heading("SQUAD • STARTING FOUR"))
 			hub_content.add_child(_hub_text("Your controlled player is locked to third-person. Use quick swaps to change your role and team setup before kick-off."))
@@ -1464,6 +1479,192 @@ func _return_to_lobby() -> void:
 
 func _show_online_room_status() -> void:
 	lobby_status.text = "Online friend rooms are not connected yet. This build currently supports offline 4v4 vs AI; online play needs a multiplayer server."
+
+
+
+func _show_online_room_status() -> void:
+	_show_hub_tab("ONLINE")
+
+
+func _build_online_panel() -> void:
+	hub_content.add_child(_hub_heading("ONLINE ROOM • DIRECT IP"))
+	hub_content.add_child(_hub_text("Create an ENet room or join a host by IP address and port. This is real peer networking, not public matchmaking. The host must be reachable from the internet; many mobile/Wi-Fi networks need port forwarding or a relay."))
+	hub_content.add_child(_hub_text("Room capacity: host + up to 3 peers. Each connected peer gets a replicated player avatar. The host is authoritative for the ball and match clock."))
+	hub_content.add_child(_hub_heading("HOST ADDRESS"))
+	online_address_input = LineEdit.new()
+	online_address_input.placeholder_text = "Host IP address (e.g. 192.168.1.20)"
+	online_address_input.text = "127.0.0.1"
+	online_address_input.custom_minimum_size.y = 42
+	hub_content.add_child(online_address_input)
+	hub_content.add_child(_hub_heading("PORT"))
+	online_port_input = SpinBox.new()
+	online_port_input.min_value = 1024
+	online_port_input.max_value = 65535
+	online_port_input.step = 1
+	online_port_input.value = 2456
+	online_port_input.custom_minimum_size.y = 42
+	hub_content.add_child(online_port_input)
+	hub_content.add_child(_hub_button("CREATE ROOM", _host_online_room))
+	hub_content.add_child(_hub_button("JOIN ROOM", _join_online_room))
+	hub_content.add_child(_hub_button("DISCONNECT", _disconnect_online_room))
+	network_status_label = _hub_text("Connection: " + network_status)
+	hub_content.add_child(network_status_label)
+	hub_content.add_child(_hub_text("Test on the same Wi-Fi using the host phone's local IP first. 127.0.0.1 refers only to this same device. Internet matchmaking, accounts, anti-cheat, and a relay service are not included yet."))
+
+
+func _host_online_room() -> void:
+	var port := int(online_port_input.value) if is_instance_valid(online_port_input) else 2456
+	_disconnect_online_room()
+	var peer := ENetMultiplayerPeer.new()
+	var result := peer.create_server(port, 3)
+	if result != OK:
+		network_status = "Host failed: " + error_string(result)
+		_set_network_status(network_status)
+		return
+	network_peer = peer
+	multiplayer.multiplayer_peer = network_peer
+	multiplayer.peer_connected.connect(_on_network_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_network_peer_disconnected)
+	network_status = "Hosting on UDP port %d • waiting for peers" % port
+	network_match_enabled = true
+	_set_network_status(network_status)
+
+
+func _join_online_room() -> void:
+	var address := online_address_input.text.strip_edges() if is_instance_valid(online_address_input) else ""
+	var port := int(online_port_input.value) if is_instance_valid(online_port_input) else 2456
+	if address.is_empty():
+		_set_network_status("Enter the host IP address first.")
+		return
+	_disconnect_online_room()
+	var peer := ENetMultiplayerPeer.new()
+	var result := peer.create_client(address, port)
+	if result != OK:
+		network_status = "Join failed: " + error_string(result)
+		_set_network_status(network_status)
+		return
+	network_peer = peer
+	multiplayer.multiplayer_peer = network_peer
+	multiplayer.connected_to_server.connect(_on_network_connected)
+	multiplayer.connection_failed.connect(_on_network_connection_failed)
+	multiplayer.server_disconnected.connect(_on_network_server_disconnected)
+	network_status = "Connecting to %s:%d…" % [address, port]
+	network_match_enabled = true
+	_set_network_status(network_status)
+
+
+func _disconnect_online_room() -> void:
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	network_peer = null
+	network_match_enabled = false
+	network_send_accumulator = 0.0
+	for peer_id in remote_players.keys():
+		var avatar = remote_players[peer_id]
+		if is_instance_valid(avatar):
+			avatar.queue_free()
+	remote_players.clear()
+	network_player_states.clear()
+	network_status = "Offline"
+	_set_network_status(network_status)
+
+
+func _on_network_connected() -> void:
+	network_status = "Connected to host • starting match"
+	_set_network_status(network_status)
+	if not match_active:
+		_start_match()
+
+
+func _on_network_connection_failed() -> void:
+	network_status = "Connection failed • check IP, port and firewall"
+	_set_network_status(network_status)
+
+
+func _on_network_server_disconnected() -> void:
+	_disconnect_online_room()
+	_set_network_status("Host disconnected.")
+
+
+func _on_network_peer_connected(peer_id: int) -> void:
+	network_status = "Peer %d connected • %d peer(s) online" % [peer_id, remote_players.size() + 1]
+	_set_network_status(network_status)
+	if not match_active:
+		_start_match()
+
+
+func _on_network_peer_disconnected(peer_id: int) -> void:
+	if remote_players.has(peer_id):
+		var avatar = remote_players[peer_id]
+		if is_instance_valid(avatar):
+			avatar.queue_free()
+		remote_players.erase(peer_id)
+	network_player_states.erase(peer_id)
+	network_status = "Peer %d left • %d peer(s) online" % [peer_id, remote_players.size()]
+	_set_network_status(network_status)
+
+
+func _set_network_status(message: String) -> void:
+	network_status = message
+	if is_instance_valid(network_status_label):
+		network_status_label.text = "Connection: " + message
+	if is_instance_valid(lobby_status):
+		lobby_status.text = message
+
+
+func _update_network_session(delta: float) -> void:
+	if not network_match_enabled or multiplayer.multiplayer_peer == null:
+		return
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	network_send_accumulator += delta
+	if network_send_accumulator < 0.05:
+		return
+	network_send_accumulator = 0.0
+	var my_id := multiplayer.get_unique_id()
+	var player_pos := player.global_position if is_instance_valid(player) else Vector3.ZERO
+	var player_rot := player.rotation.y if is_instance_valid(player) else 0.0
+	var ball_pos := ball.global_position if is_instance_valid(ball) else Vector3.ZERO
+	var ball_vel := ball.linear_velocity if is_instance_valid(ball) else Vector3.ZERO
+	if multiplayer.is_server():
+		network_player_states[my_id] = {"position": player_pos, "rotation": player_rot}
+		for peer_id in network_player_states.keys():
+			var state: Dictionary = network_player_states[peer_id]
+			rpc("_rpc_receive_state", int(peer_id), state["position"], float(state["rotation"]), ball_pos, ball_vel, score_home, score_away, time_left)
+	else:
+		rpc_id(1, "_rpc_submit_state", player_pos, player_rot)
+
+
+@rpc("any_peer", "call_remote", "unreliable")
+func _rpc_submit_state(position: Vector3, rotation_y: float) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 1 or not is_instance_valid(player):
+		return
+	if absf(position.x) > FIELD_LENGTH / 2.0 + 2.0 or absf(position.z) > FIELD_WIDTH / 2.0 + 2.0:
+		return
+	network_player_states[sender_id] = {"position": position, "rotation": rotation_y}
+
+
+@rpc("authority", "call_remote", "unreliable")
+func _rpc_receive_state(peer_id: int, position: Vector3, rotation_y: float, ball_position: Vector3, ball_velocity: Vector3, home_score: int, away_score: int, match_clock: float) -> void:
+	if peer_id != multiplayer.get_unique_id():
+		if not remote_players.has(peer_id) or not is_instance_valid(remote_players[peer_id]):
+			var avatar := _make_player(peer_id % 2 == 0, position)
+			avatar.name = "RemotePeer_%d" % peer_id
+			remote_players[peer_id] = avatar
+		var remote_avatar: CharacterBody3D = remote_players[peer_id]
+		remote_avatar.global_position = remote_avatar.global_position.lerp(position, 0.55)
+		remote_avatar.rotation.y = rotation_y
+	if not multiplayer.is_server():
+		ball.global_position = ball_position
+		ball.linear_velocity = ball_velocity.limit_length(35.0)
+		score_home = home_score
+		score_away = away_score
+		time_left = clampf(match_clock, 0.0, MATCH_SECONDS)
+		_update_hud()
 
 
 func _save_progress() -> void:
