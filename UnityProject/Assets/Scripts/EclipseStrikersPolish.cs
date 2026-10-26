@@ -13,7 +13,7 @@ public class EclipseStrikersPolish : MonoBehaviour
     }
 
     readonly List<Rig> rigs = new List<Rig>();
-    Transform ball;
+    Transform ball, keeperLeft, keeperRight;
     float aiKickTimer;
     Material MakeMat(Color c, float metallic = 0f)
     {
@@ -44,6 +44,18 @@ public class EclipseStrikersPolish : MonoBehaviour
         if (ballObject != null) ball = ballObject.transform;
         PlayerMarker[] markers = FindObjectsOfType<PlayerMarker>();
         foreach (PlayerMarker marker in markers) BuildRig(marker);
+        keeperLeft = BuildKeeper("Eclipse FC Keeper", -14.25f, new Color(.05f,.9f,.95f));
+        keeperRight = BuildKeeper("Rival FC Keeper", 14.25f, new Color(1f,.65f,.08f));
+    }
+    Transform BuildKeeper(string keeperName, float x, Color trim)
+    {
+        Transform root = new GameObject(keeperName).transform;
+        root.position = new Vector3(x,0,0);
+        Part("Keeper body", root, new Vector3(0,.92f,0), new Vector3(.78f,.95f,.7f), trim);
+        Part("Keeper head", root, new Vector3(0,1.9f,0), new Vector3(.48f,.48f,.48f), new Color(.94f,.7f,.53f), PrimitiveType.Sphere);
+        Part("Keeper glove left", root, new Vector3(-.65f,1.05f,0), new Vector3(.25f,.25f,.25f), Color.white, PrimitiveType.Sphere);
+        Part("Keeper glove right", root, new Vector3(.65f,1.05f,0), new Vector3(.25f,.25f,.25f), Color.white, PrimitiveType.Sphere);
+        return root;
     }
     void BuildRig(PlayerMarker marker)
     {
@@ -99,6 +111,23 @@ public class EclipseStrikersPolish : MonoBehaviour
         g.transform.localPosition=pos; g.transform.localScale=scale;
         g.GetComponent<Renderer>().material=MakeMat(color,.2f);
     }
+    void UpdateKeeper(Transform keeper, float x)
+    {
+        if (keeper == null || ball == null) return;
+        Vector3 target = keeper.position;
+        target.x = x;
+        target.z = Mathf.Clamp(ball.position.z * .62f, -1.65f, 1.65f);
+        target.y = 0;
+        keeper.position = Vector3.MoveTowards(keeper.position, target, 3.6f * Time.deltaTime);
+        if (Mathf.Abs(ball.position.x - x) < 1.2f && Mathf.Abs(ball.position.z - keeper.position.z) < 1.25f && ball.position.y < 2.4f)
+        {
+            Rigidbody rb = ball.GetComponent<Rigidbody>();
+            if (rb != null && rb.velocity.sqrMagnitude > .1f)
+            {
+                rb.velocity = new Vector3(-Mathf.Sign(x) * Mathf.Abs(rb.velocity.x) * .7f, Mathf.Max(.7f, rb.velocity.y), rb.velocity.z + (ball.position.z-keeper.position.z)*1.2f);
+            }
+        }
+    }
     void Update()
     {
         float dt = Mathf.Max(Time.deltaTime,.001f);
@@ -117,6 +146,8 @@ public class EclipseStrikersPolish : MonoBehaviour
         // Give the rival side a basic chance to attempt a shot instead of only chasing.
         if (ball != null)
         {
+            UpdateKeeper(keeperLeft, -14.25f);
+            UpdateKeeper(keeperRight, 14.25f);
             aiKickTimer-=Time.deltaTime;
             if (aiKickTimer<=0)
             {
