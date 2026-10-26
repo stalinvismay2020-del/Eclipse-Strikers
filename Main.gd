@@ -93,6 +93,9 @@ var online_address_input: LineEdit
 var online_port_input: SpinBox
 var network_status_label: Label
 var network_match_enabled := false
+var friend_target_input: LineEdit
+var friend_request_status_label: Label
+var pending_friend_request_from := -1
 
 
 func _ready() -> void:
@@ -1510,8 +1513,8 @@ func _show_online_room_status() -> void:
 
 func _build_online_panel() -> void:
 	hub_content.add_child(_hub_heading("ONLINE ROOM • DIRECT IP"))
-	hub_content.add_child(_hub_text("Create an ENet room or join a host by IP address and port. This is real peer networking, not public matchmaking. The host must be reachable from the internet; many mobile/Wi-Fi networks need port forwarding or a relay."))
-	hub_content.add_child(_hub_text("Room capacity: host + up to 3 peers. Each connected peer gets a replicated player avatar. The host is authoritative for the ball and match clock."))
+	hub_content.add_child(_hub_text("Offline Quick Match and Career work without internet. Ranked is online-only but needs a live ranked server, which is not deployed yet. Create or join a friend's room for direct-IP multiplayer."))
+	hub_content.add_child(_hub_text("Room capacity: host + up to 3 peers. Player requests are available only between players already connected to the same room. Public matchmaking and global friends are not live yet."))
 	hub_content.add_child(_hub_heading("HOST ADDRESS"))
 	online_address_input = LineEdit.new()
 	online_address_input.placeholder_text = "Host IP address (e.g. 192.168.1.20)"
@@ -1531,7 +1534,100 @@ func _build_online_panel() -> void:
 	hub_content.add_child(_hub_button("DISCONNECT", _disconnect_online_room))
 	network_status_label = _hub_text("Connection: " + network_status)
 	hub_content.add_child(network_status_label)
-	hub_content.add_child(_hub_text("Test on the same Wi-Fi using the host phone's local IP first. 127.0.0.1 refers only to this same device. Internet matchmaking, accounts, anti-cheat, and a relay service are not included yet."))
+	hub_content.add_child(_hub_heading("PLAYER REQUESTS"))
+	hub_content.add_child(_hub_text("Enter a connected player's peer ID to send a request. The other player can accept or reject it."))
+	friend_target_input = LineEdit.new()
+	friend_target_input.placeholder_text = "Target peer ID (e.g. 2)"
+	friend_target_input.custom_minimum_size.y = 42
+	hub_content.add_child(friend_target_input)
+	hub_content.add_child(_hub_button("SEND PLAYER REQUEST", _send_friend_request))
+	friend_request_status_label = _hub_text("No pending player request.")
+	hub_content.add_child(friend_request_status_label)
+	var response_row := HBoxContainer.new()
+	response_row.add_child(_hub_button("ACCEPT", func(): _respond_to_friend_request(true)))
+	response_row.add_child(_hub_button("REJECT", func(): _respond_to_friend_request(false)))
+	hub_content.add_child(response_row)
+	hub_content.add_child(_hub_text("The host must be reachable over the network; mobile networks may need a relay or port forwarding. 127.0.0.1 means this device only."))
+
+
+func _send_friend_request() -> void:
+	if multiplayer.multiplayer_peer == null or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		_set_friend_request_status("Join or create a room before sending a request.")
+		return
+	var target_text := friend_target_input.text.strip_edges() if is_instance_valid(friend_target_input) else ""
+	if not target_text.is_valid_int():
+		_set_friend_request_status("Enter a valid peer ID.")
+		return
+	var target_id := int(target_text)
+	if target_id <= 0 or target_id == multiplayer.get_unique_id():
+		_set_friend_request_status("Choose another connected player's peer ID.")
+		return
+	if multiplayer.is_server():
+		if not multiplayer.get_peers().has(target_id):
+			_set_friend_request_status("That peer is not connected to this room.")
+			return
+		rpc_id(target_id, "_rpc_receive_friend_request", 1, "Room host")
+	else:
+		rpc_id(1, "_rpc_route_friend_request", target_id)
+	_set_friend_request_status("Request sent to player %d." % target_id)
+
+
+func _respond_to_friend_request(accepted: bool) -> void:
+	if pending_friend_request_from < 0:
+		_set_friend_request_status("There is no request to answer.")
+		return
+	var requester_id := pending_friend_request_from
+	pending_friend_request_from = -1
+	if multiplayer.multiplayer_peer != null and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		if multiplayer.is_server():
+			if requester_id > 1:
+				rpc_id(requester_id, "_rpc_friend_request_result", 1, accepted)
+		else:
+			rpc_id(1, "_rpc_route_friend_request_response", requester_id, accepted)
+	_set_friend_request_status("Request accepted." if accepted else "Request rejected.")
+
+
+func _set_friend_request_status(message: String) -> void:
+	if is_instance_valid(friend_request_status_label):
+		friend_request_status_label.text = message
+	if is_instance_valid(lobby_status):
+		lobby_status.text = message
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_route_friend_request(target_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 1 or target_id <= 1 or sender_id == target_id or not multiplayer.get_peers().has(target_id):
+		if sender_id > 1:
+			rpc_id(sender_id, "_rpc_friend_request_result", target_id, false)
+		return
+	rpc_id(target_id, "_rpc_receive_friend_request", sender_id, "Player %d" % sender_id)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_receive_friend_request(sender_id: int, sender_name: String) -> void:
+	pending_friend_request_from = sender_id
+	_set_friend_request_status("REQUEST FROM %s • tap ACCEPT or REJECT" % sender_name)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_route_friend_request_response(requester_id: int, accepted: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	var responder_id := multiplayer.get_remote_sender_id()
+	if responder_id <= 1 or requester_id <= 0:
+		return
+	if requester_id == 1:
+		_set_friend_request_status("Player %d %s your request." % [responder_id, "accepted" if accepted else "rejected"])
+	elif multiplayer.get_peers().has(requester_id):
+		rpc_id(requester_id, "_rpc_friend_request_result", responder_id, accepted)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_friend_request_result(responder_id: int, accepted: bool) -> void:
+	_set_friend_request_status("Player %d accepted your request!" % responder_id if accepted else "Player %d rejected your request." % responder_id)
 
 
 func _host_online_room() -> void:
