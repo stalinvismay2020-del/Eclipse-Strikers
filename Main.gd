@@ -1943,16 +1943,19 @@ func _build_profile_panel() -> void:
 			found_any = true
 			var peer_row := HBoxContainer.new()
 			peer_row.add_child(_hub_text("%s • %s" % [str(entry.get("name", "Player")), remote_uid]))
-			peer_row.add_child(_hub_button("COPY UID", func(uid_to_copy: String = remote_uid):
-				DisplayServer.clipboard_set(uid_to_copy)
-				_set_profile_status("Player UID copied.")
-			))
+			var copy_peer_uid := _hub_button("COPY UID", _copy_remote_uid.bind(remote_uid))
+			peer_row.add_child(copy_peer_uid)
 			hub_content.add_child(peer_row)
 		if not found_any:
 			hub_content.add_child(_hub_text("No other player profiles received yet. Players must join this room and register their guest profile."))
 	else:
 		hub_content.add_child(_hub_text("Join the same online room as another player to see their UID here."))
 	hub_content.add_child(_hub_text("UIDs are currently local-profile IDs, not server-verified accounts. Use the ONLINE tab for requests to players in the same room."))
+
+
+func _copy_remote_uid(uid_to_copy: String) -> void:
+	DisplayServer.clipboard_set(uid_to_copy)
+	_set_profile_status("Player UID copied.")
 
 
 func _set_profile_status(message: String) -> void:
