@@ -71,6 +71,8 @@ var ultimate_button: Button
 var pause_button: Button
 var sound_button: Button
 var ultimate_fx_timer := 0.0
+var ball_spin := 0.0
+var dribble_knock_cooldown := 0.0
 
 func _ready() -> void:
 	rng.randomize()
@@ -278,6 +280,8 @@ func _process(delta: float) -> void:
 		burst_time = maxf(0.0, burst_time - delta)
 	if burst_cooldown > 0.0:
 		burst_cooldown = maxf(0.0, burst_cooldown - delta)
+	if dribble_knock_cooldown > 0.0:
+		dribble_knock_cooldown = maxf(0.0, dribble_knock_cooldown - delta)
 	if ultimate_cooldown > 0.0:
 		ultimate_cooldown = maxf(0.0, ultimate_cooldown - delta)
 	if pass_request_cooldown > 0.0:
@@ -628,6 +632,14 @@ func _build_ui() -> void:
 	shoot_button.pressed.connect(_shoot)
 	pass_button = _make_button(layer, "PASS", Vector2(-235, -80), Color(0.05,0.4,0.85))
 	pass_button.pressed.connect(_pass_ball)
+	var lob_button := _make_button(layer, "LOB / THROUGH", Vector2(-350, -145), Color(0.05, 0.52, 0.58))
+	lob_button.size = Vector2(112, 58)
+	lob_button.add_theme_font_size_override("font_size", 11)
+	lob_button.pressed.connect(_lob_through_pass)
+	var finesse_button := _make_button(layer, "FINESSE", Vector2(-235, -215), Color(0.62, 0.26, 0.72))
+	finesse_button.pressed.connect(_finesse_shot)
+	var tackle_button := _make_button(layer, "TACKLE", Vector2(-128, -215), Color(0.75, 0.34, 0.08))
+	tackle_button.pressed.connect(_tackle)
 	call_pass_button = _make_button(layer, "CALL PASS", Vector2(-350, -80), Color(0.08,0.58,0.42))
 	call_pass_button.size = Vector2(108, 58)
 	call_pass_button.add_theme_font_size_override("font_size", 13)
@@ -804,12 +816,19 @@ func _move_user(delta: float) -> void:
 	right = right.normalized()
 	var direction := (right * input_dir.x + forward * -input_dir.y).normalized()
 	var speed := PLAYER_SPEED * (1.8 if burst_time > 0.0 else 1.0)
-	player.velocity.x = direction.x * speed
-	player.velocity.z = direction.z * speed
+	var target_velocity := direction * speed
+	var response := 13.0 if direction.length() > 0.1 else 8.0
+	player.velocity.x = move_toward(player.velocity.x, target_velocity.x, response * delta)
+	player.velocity.z = move_toward(player.velocity.z, target_velocity.z, response * delta)
 	player.velocity.y = -0.5
 	player.move_and_slide()
 	if direction.length() > 0.1:
-		player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.z), minf(1.0, delta * 10.0))
+		player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.z), minf(1.0, delta * 8.0))
+		# Gentle touches preserve free ball movement while rewarding close control.
+		if ball and player.global_position.distance_to(ball.global_position) < 1.35 and dribble_knock_cooldown <= 0.0 and ball.global_position.y < 0.9:
+			var touch_strength := 1.0 if input_dir.length() < 0.65 else 2.4
+			ball.apply_central_impulse((direction * touch_strength) + Vector3(0, 0.04, 0))
+			dribble_knock_cooldown = 0.16
 	player.position.x = clampf(player.position.x, -FIELD_LENGTH / 2.0 + 1.0, FIELD_LENGTH / 2.0 - 1.0)
 	player.position.z = clampf(player.position.z, -FIELD_WIDTH / 2.0 + 1.0, FIELD_WIDTH / 2.0 - 1.0)
 
@@ -867,6 +886,11 @@ func _move_ball(_delta: float) -> void:
 	if absf(ball.global_position.z) > FIELD_WIDTH / 2.0 - 0.4:
 		ball.linear_velocity.z *= -0.65
 		ball.global_position.z = clampf(ball.global_position.z, -FIELD_WIDTH / 2.0 + 0.5, FIELD_WIDTH / 2.0 - 0.5)
+	# Subtle spin adds a lateral curve to moving shots and passes.
+	if absf(ball_spin) > 0.02 and ball.global_position.y < 2.2:
+		var v := ball.linear_velocity
+		ball.apply_central_force(Vector3(-v.z, 0.0, v.x) * ball_spin * 0.22)
+		ball_spin = move_toward(ball_spin, 0.0, _delta * 0.42)
 	ball.linear_velocity.x = clampf(ball.linear_velocity.x, -18.0, 18.0)
 	ball.linear_velocity.z = clampf(ball.linear_velocity.z, -14.0, 14.0)
 
@@ -883,10 +907,63 @@ func _shoot() -> void:
 	if selected_ability == "Power Shot":
 		shot_power = 18.0
 	ball.apply_central_impulse(dir * shot_power)
+	ball_spin = clampf(-player.global_position.z * 0.12, -1.8, 1.8)
 	kick_anim_time = 0.34
 	_play_sfx("kick")
 	_spawn_skill_burst(ball.global_position, Color(1.0, 0.25, 0.12))
 	ui_hint.text = "⚡ DIRECT SHOT! ⚡"
+
+func _lob_through_pass() -> void:
+	if not match_active or not _near_ball():
+		ui_hint.text = "Get close to the ball for a lob pass"
+		return
+	var target := player.global_position + (-player.global_basis.z * 10.0)
+	if not teammates.is_empty():
+		var best := teammates[0]
+		for mate in teammates:
+			if mate.global_position.distance_to(player.global_position) > best.global_position.distance_to(player.global_position):
+				best = mate
+		target = best.global_position + (-best.global_basis.z * 2.5)
+	var dir := (target - ball.global_position).normalized()
+	dir.y = 0.34
+	ball.apply_central_impulse(dir.normalized() * 9.2)
+	ball_spin = clampf(player.global_position.z * 0.05, -0.7, 0.7)
+	kick_anim_time = 0.3
+	_play_sfx("pass")
+	ui_hint.text = "LOFTED THROUGH BALL!"
+
+func _finesse_shot() -> void:
+	if not match_active or not _near_ball():
+		ui_hint.text = "Get closer to the ball to finesse"
+		return
+	var target := Vector3(FIELD_LENGTH / 2.0 + 2.0, 1.0, clampf(-player.global_position.z * 0.7 + 1.0, -2.4, 2.4))
+	var dir := (target - ball.global_position).normalized()
+	ball.apply_central_impulse(dir * 10.5)
+	ball_spin = -1.8 if player.global_position.z >= 0.0 else 1.8
+	kick_anim_time = 0.4
+	_play_sfx("kick")
+	_spawn_skill_burst(ball.global_position, Color(0.8, 0.25, 1.0))
+	ui_hint.text = "CURVE SHOT! AIM FOR THE CORNER"
+
+func _tackle() -> void:
+	if not match_active:
+		return
+	var closest: CharacterBody3D = null
+	var closest_distance := 2.25
+	for rival in opponents:
+		var distance := player.global_position.distance_to(rival.global_position)
+		if distance < closest_distance:
+			closest = rival
+			closest_distance = distance
+	if closest != null:
+		var push := (closest.global_position - player.global_position).normalized()
+		closest.velocity.x += push.x * 5.0
+		closest.velocity.z += push.z * 5.0
+		if closest.global_position.distance_to(ball.global_position) < 1.8:
+			ball.apply_central_impulse((push * 5.5) + Vector3(0, 0.3, 0))
+		ui_hint.text = "STANDING TACKLE!"
+	else:
+		ui_hint.text = "NO OPPONENT IN TACKLING RANGE"
 
 func _request_teammate_pass() -> void:
 	if not match_active:
@@ -920,6 +997,7 @@ func _pass_ball() -> void:
 	if selected_ability == "Precision Pass":
 		pass_power = 11.0
 	ball.apply_central_impulse(dir.normalized() * pass_power)
+	ball_spin = clampf(player.global_position.z * 0.04, -0.5, 0.5)
 	kick_anim_time = 0.28
 	_play_sfx("pass")
 	_spawn_skill_burst(ball.global_position, Color(0.15, 0.65, 1.0))
