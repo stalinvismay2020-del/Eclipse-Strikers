@@ -1448,9 +1448,12 @@ func _start_match() -> void:
 	is_paused = false
 	if pause_button:
 		pause_button.text = "PAUSE"
-	selected_character = character_picker.get_item_text(character_picker.selected)
-	selected_ability = ability_picker.get_item_text(ability_picker.selected)
-	selected_team_color = color_picker.get_item_text(color_picker.selected)
+	if is_instance_valid(character_picker):
+		selected_character = character_picker.get_item_text(character_picker.selected)
+	if is_instance_valid(ability_picker):
+		selected_ability = ability_picker.get_item_text(ability_picker.selected)
+	if is_instance_valid(color_picker):
+		selected_team_color = color_picker.get_item_text(color_picker.selected)
 	var tint := Color(0.08, 0.36, 0.95)
 	match selected_team_color:
 		"Neon Green": tint = Color(0.12, 0.92, 0.42)
