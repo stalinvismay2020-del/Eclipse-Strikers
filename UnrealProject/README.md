@@ -1,18 +1,25 @@
 # Eclipse Strikers — Unreal Engine starter
 
-This folder is a **starter scaffold**, not a finished game or a verified APK.
+This is an **early Unreal Engine C++ starter scaffold**, not a finished game or a verified APK.
 
-## Target
-- Unreal Engine 5.4 C++ project
-- Android ARM64 target
-- Third-person follow camera and basic character movement
-- Prototype shoot and temporary speed-ability hooks
-- Planned next: generated pitch/ball/goal, 4v4 AI, five-minute match loop, mobile touch UI, anime character assets, audio, menus and testing
+## Added so far
+- Unreal Engine 5.4 project and game/editor target rules
+- Third-person character with follow camera and movement bindings
+- Prototype ball-shooting logic and timed speed boost
+- Procedural pitch surface, basic field markings and simple goal-frame shapes
+- Physics-enabled ball actor
+- Five-minute match clock in the game mode
+- Android ARM64 packaging settings
 
-## Important
-The project has not yet been compiled or tested in Unreal Editor. An Android APK cannot be honestly claimed until the project builds with a compatible Unreal Engine installation and Android toolchain, then the APK is installed and tested on a device.
+## Still missing
+- Four-versus-four team spawning and opponent AI
+- Reliable goal detection, score display, match-end screen and restart flow
+- On-screen Android joystick and touch buttons
+- Final anime-quality character models, animations, materials, stadium art and sound
+- Menu/settings flow and real device performance tuning
 
-The default engine association may need changing to the installed Unreal Engine version. Add project input mappings for MoveForward, MoveRight, Jump, Shoot and Ability in Project Settings before testing keyboard controls. Mobile touch controls and the complete match loop are not implemented in this scaffold.
+## Build status
+The code has been added to GitHub but **has not been compiled or tested in Unreal Editor**. It may need fixes after a real Unreal build. No APK has been generated or verified yet.
 
 ## Android build
-Build from Unreal Editor on a compatible computer with Android SDK/NDK configured. A GitHub-hosted runner does not include Unreal Engine by default, and Unreal's license/installation requirements must be handled legitimately.
+Open this project using a compatible Unreal Engine installation on a computer with Android SDK/NDK configured. GitHub-hosted runners do not include Unreal Engine by default, and a legitimate Unreal installation/license and Android toolchain are required. The project may need a proper playable map and PlayerStart added in Unreal Editor before testing.
