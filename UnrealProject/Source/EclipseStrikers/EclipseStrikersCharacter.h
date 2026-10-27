@@ -28,6 +28,7 @@ public:
 private:
     void MoveForward(float Value);
     void MoveRight(float Value);
+    void EndAbilityBoost();
 
     UPROPERTY(VisibleAnywhere, Category="Camera")
     TObjectPtr<class USpringArmComponent> CameraBoom;
@@ -41,5 +42,9 @@ private:
     UPROPERTY(EditAnywhere, Category="Football")
     float AbilityCooldown = 8.0f;
 
+    UPROPERTY(EditAnywhere, Category="Football")
+    float AbilityDuration = 1.5f;
+
     float AbilityReadyAt = 0.0f;
+    FTimerHandle AbilityTimerHandle;
 };
