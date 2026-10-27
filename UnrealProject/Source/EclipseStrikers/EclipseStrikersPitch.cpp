@@ -50,8 +50,8 @@ void AEclipseStrikersPitch::AddBlock(const FVector& Location, const FVector& Sca
     Part->SetupAttachment(SceneRoot);
     Part->SetRelativeLocation(Location);
     Part->SetRelativeScale3D(Scale);
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeAsset(TEXT("/Engine/BasicShapes/Cube.Cube"));
-    if (CubeAsset.Succeeded()) Part->SetStaticMesh(CubeAsset.Object);
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (CubeMesh) Part->SetStaticMesh(CubeMesh);
     Part->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     Part->RegisterComponent();
     UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Part->GetMaterial(0), this);
