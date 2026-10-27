@@ -8,6 +8,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
+#include "TimerManager.h"
 
 AEclipseStrikersCharacter::AEclipseStrikersCharacter()
 {
@@ -94,8 +95,10 @@ void AEclipseStrikersCharacter::UseAbility()
     if (!GetWorld() || GetWorld()->GetTimeSeconds() < AbilityReadyAt) return;
     AbilityReadyAt = GetWorld()->GetTimeSeconds() + AbilityCooldown;
     GetCharacterMovement()->MaxWalkSpeed = 1050.0f;
-    GetWorldTimerManager().SetTimerForNextTick([this]()
-    {
-        if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = 650.0f;
-    });
+    GetWorldTimerManager().SetTimer(AbilityTimerHandle, this, &AEclipseStrikersCharacter::EndAbilityBoost, AbilityDuration, false);
+}
+
+void AEclipseStrikersCharacter::EndAbilityBoost()
+{
+    if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = 650.0f;
 }
